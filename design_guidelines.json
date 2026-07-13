@@ -1,0 +1,169 @@
+{
+  "app_name": "PilotWeather",
+  "personality": "7 Dark-First Utility DARK",
+  "personality_one_liner": "A cockpit-grade operational tool emphasizing glanceability, high contrast, and dense aeronautical metrics.",
+  "color": {
+    "surface": "#111315",
+    "onSurface": "#FFFFFF",
+    "surfaceSecondary": "#1C1F22",
+    "onSurfaceSecondary": "#A1A6AB",
+    "surfaceTertiary": "#262A2E",
+    "onSurfaceTertiary": "#8A9198",
+    "surfaceInverse": "#E2E4E9",
+    "onSurfaceInverse": "#111315",
+    "brand": "#FF9F0A",
+    "brandPrimary": "#FF9F0A",
+    "onBrandPrimary": "#000000",
+    "brandSecondary": "#CC7F08",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#332002",
+    "onBrandTertiary": "#FF9F0A",
+    "success": "#32D74B",
+    "onSuccess": "#000000",
+    "warning": "#FFD60A",
+    "onWarning": "#000000",
+    "error": "#FF453A",
+    "onError": "#FFFFFF",
+    "info": "#0A84FF",
+    "onInfo": "#FFFFFF",
+    "vfr": "#32D74B",
+    "mvfr": "#0A84FF",
+    "ifr": "#FF453A",
+    "lifr": "#BF5AF2",
+    "border": "#2A2F35",
+    "borderStrong": "#3E454D",
+    "divider": "#1F2328"
+  },
+  "typography": {
+    "displayFontFamily": "Rajdhani",
+    "textFontFamily": "IBM Plex Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Handle spacing correctly dont have extra spaces where its not required, handle padding and margin corectly and subtle for buttons and components",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "pill": 999
+  },
+  "shadow_tier": 0,
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [
+      "Use solid surfaceSecondary and surfaceTertiary to maintain high-contrast readability."
+    ],
+    "dont's": [
+      "Do not use blur or glassmorphism on dense data screens like aviation metrics."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "events": {
+      "tab_press": "light",
+      "button_press": "medium",
+      "toggle_switch": "light",
+      "pull_to_refresh": "medium",
+      "alert_appear": "heavy"
+    }
+  },
+  "screens": [
+    {
+      "name": "Auth",
+      "purpose": "Login/Signup for pilots to sync their configurations and saved airports.",
+      "states": {
+        "loading": "spinner",
+        "empty": "N/A",
+        "error": "toast/alert"
+      },
+      "layout": "Full-bleed background image of a night runway approach with a dark gradient scrim (top to bottom). Form inputs placed in the bottom 40% of the screen. High contrast amber CTA button."
+    },
+    {
+      "name": "Dashboard",
+      "purpose": "Glanceable overview of current location's weather, flight condition, and active alerts.",
+      "states": {
+        "loading": "Skeleton loaders for metrics",
+        "empty": "GPS disabled or no location found illustration",
+        "error": "Unable to fetch METAR/TAF data, retry button"
+      },
+      "layout": "Top section: Large text showing airport code and city, immediately paired with a color-coded FAA flight condition badge (VFR/MVFR/IFR/LIFR). Middle: Wind rose visualization with current speed, gust, and direction. Bottom: Horizontal scrollable timeline strip for hourly forecast (24-48h)."
+    },
+    {
+      "name": "Search",
+      "purpose": "Look up airports by ICAO/IATA code or city name.",
+      "states": {
+        "loading": "spinner",
+        "empty": "Illustration of cockpit window looking at empty sky, 'Search for an airport'",
+        "error": "Search failed"
+      },
+      "layout": "Sticky search bar at top. List of results with their current FAA flight condition dot (Green/Blue/Red/Magenta) on the right edge of each list item row."
+    },
+    {
+      "name": "Favorites",
+      "purpose": "Quick access to saved airports and their immediate conditions.",
+      "states": {
+        "loading": "spinner",
+        "empty": "Illustration of empty radar, 'No saved airports'",
+        "error": "Fetch failed"
+      },
+      "layout": "Grid or vertical list of surfaceSecondary cards. Each card acts as a mini-dashboard showing airport code, main wind metric, and the FAA flight condition color as a thin border or left-edge indicator."
+    },
+    {
+      "name": "Settings",
+      "purpose": "Configure aviation units and app preferences.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "List of segmented controls for unit toggles (Knots vs KM/H, Feet vs Meters, °C vs °F). Strict utilitarian layout using surfaceSecondary rows and dividers."
+    }
+  ],
+  "images": {
+    "auth_background": {
+      "url": "https://images.unsplash.com/photo-1554137496-a7b5bf064531?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwxfHxydW53YXklMjBhcHByb2FjaCUyMGxpZ2h0cyUyMG5pZ2h0fGVufDB8fHx8MTc4MzkzMDA3NHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Runway approach lights at night"
+    },
+    "empty_search": {
+      "url": "https://images.unsplash.com/photo-1708754364914-ae0d34e1396c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwyfHxhaXJwbGFuZSUyMGNvY2twaXQlMjB3aW5kb3clMjB2aWV3JTIwZGFya3xlbnwwfHx8fDE3ODM5MzAwNzV8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Empty sky viewed through airplane cockpit window"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Implement '7 Dark-First Utility DARK' strictly. The app should look like a cockpit instrument.",
+    "Bypass the strict 'no blue/purple' rule ONLY for the FAA flight condition colors. Use the provided vfr, mvfr, ifr, and lifr color tokens for status indicators.",
+    "Do NOT use glassmorphism. This app requires high legibility and contrast. Stick to solid surfaceSecondary blocks with subtle borders.",
+    "For the Hourly Forecast timeline, build a horizontally scrolling view. Each item should show time, weather icon, and a directional arrow indicating wind direction relative to north.",
+    "Implement the wind rose / compass as a custom UI component. It should clearly show N/E/S/W with an indicator for the current wind direction and text for speed/gusts.",
+    "Ensure 'Rajdhani' is used for large numbers, metrics, and display titles, and 'IBM Plex Sans' for secondary text and labels.",
+    "For the Auth background image, you MUST implement a top-to-bottom gradient scrim using expo-linear-gradient to ensure form inputs and text are readable at the bottom.",
+    "Include haptic feedback on tab changes, unit toggles in settings, and search submission."
+  ]
+}
