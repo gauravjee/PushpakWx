@@ -33,7 +33,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 FROM_EMAIL = os.environ.get('FROM_EMAIL', 'onboarding@resend.dev')
 
-app = FastAPI(title="PilotWeather API")
+app = FastAPI(title="PushpakWX API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
@@ -182,21 +182,21 @@ def verification_email_html(code: str, name: Optional[str] = None) -> str:
     display = name or "Pilot"
     return f"""
     <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#111315; color:#fff; padding:32px; border-radius:12px; max-width:520px; margin:0 auto;">
-      <h1 style="color:#FF9F0A; letter-spacing:4px; margin:0 0 8px;">PILOT<span style="color:#fff;">WX</span></h1>
+      <h1 style="color:#FF9F0A; letter-spacing:4px; margin:0 0 8px;">PUSHPAK<span style="color:#fff;">WX</span></h1>
       <p style="color:#A1A6AB; letter-spacing:2px; font-size:11px; margin:0 0 24px;">AVIATION WEATHER</p>
       <h2 style="color:#fff; margin:0 0 12px;">Verify your email</h2>
       <p style="color:#A1A6AB; line-height:1.5;">Hi {display}, use the code below to confirm your email address. This code expires in 15 minutes.</p>
       <div style="background:#1C1F22; border:1px solid #2A2F35; padding:20px; border-radius:8px; text-align:center; margin:24px 0;">
         <div style="color:#FF9F0A; font-size:36px; letter-spacing:12px; font-weight:800;">{code}</div>
       </div>
-      <p style="color:#8A9198; font-size:12px;">If you didn't sign up for PilotWX, ignore this email.</p>
+      <p style="color:#8A9198; font-size:12px;">If you didn't sign up for PushpakWX, ignore this email.</p>
     </div>
     """
 
 def reset_email_html(code: str) -> str:
     return f"""
     <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#111315; color:#fff; padding:32px; border-radius:12px; max-width:520px; margin:0 auto;">
-      <h1 style="color:#FF9F0A; letter-spacing:4px; margin:0 0 8px;">PILOT<span style="color:#fff;">WX</span></h1>
+      <h1 style="color:#FF9F0A; letter-spacing:4px; margin:0 0 8px;">PUSHPAK<span style="color:#fff;">WX</span></h1>
       <h2 style="color:#fff; margin:24px 0 12px;">Reset your password</h2>
       <p style="color:#A1A6AB; line-height:1.5;">Use the code below to reset your password. This code expires in 15 minutes.</p>
       <div style="background:#1C1F22; border:1px solid #2A2F35; padding:20px; border-radius:8px; text-align:center; margin:24px 0;">
@@ -216,7 +216,7 @@ async def create_and_send_otp(email: str, purpose: str, name: Optional[str] = No
         "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
         "attempts": 0,
     })
-    subject = "Verify your PilotWX email" if purpose == "verify" else "Reset your PilotWX password"
+    subject = "Verify your PushpakWX email" if purpose == "verify" else "Reset your PushpakWX password"
     html = verification_email_html(code, name) if purpose == "verify" else reset_email_html(code)
     await send_email(email, subject, html)
     return code
@@ -299,7 +299,7 @@ async def seed_airports():
 
 @api_router.get("/")
 async def root():
-    return {"message": "PilotWeather API", "status": "ok"}
+    return {"message": "PushpakWX API", "status": "ok"}
 
 @api_router.post("/auth/register")
 async def register(payload: UserCreate):

@@ -54,7 +54,7 @@ export default function Login() {
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
-            <Text style={styles.brand}>PILOT<Text style={{ color: colors.brand }}>WX</Text></Text>
+            <Text style={styles.brand}>PUSHPAK<Text style={{ color: colors.brand }}>WX</Text></Text>
             <Text style={styles.tag}>AVIATION WEATHER · PROFESSIONAL FORECAST</Text>
           </View>
           <View style={styles.form}>

@@ -51,7 +51,7 @@ export default function Register() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
-            <Text style={styles.brand}>PILOT<Text style={{ color: colors.brand }}>WX</Text></Text>
+            <Text style={styles.brand}>PUSHPAK<Text style={{ color: colors.brand }}>WX</Text></Text>
             <Text style={styles.tag}>CREATE YOUR ACCOUNT</Text>
           </View>
           <View style={styles.form}>
