@@ -27,7 +27,6 @@ export default function InFlight() {
       setCanAskAgain(p.canAskAgain);
       if (p.status === 'granted') {
         setPermStatus('granted');
-        setPrePermission(false);
       } else {
         setPermStatus(p.status === 'denied' ? 'denied' : 'undetermined');
       }
@@ -83,7 +82,6 @@ export default function InFlight() {
     setCanAskAgain(p.canAskAgain);
     if (p.status === 'granted') {
       setPermStatus('granted');
-      setPrePermission(false);
     } else {
       setPermStatus('denied');
     }

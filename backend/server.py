@@ -578,12 +578,15 @@ async def get_metar(icao: str = Query(..., min_length=3, max_length=4)):
     url = f"https://aviationweather.gov/api/data/metar?ids={icao_up}&format=json&taf=false&hours=2"
     async with httpx.AsyncClient(timeout=15.0) as http_client:
         r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
-        if r.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"METAR provider error: {r.status_code}")
-        try:
-            data = r.json()
-        except Exception:
+        if r.status_code == 204:
             data = []
+        elif r.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"METAR provider error: {r.status_code}")
+        else:
+            try:
+                data = r.json()
+            except Exception:
+                data = []
         if not data:
             return {"icao": icao_up, "available": False, "raw": None, "observation_time": None}
         m = data[0]
@@ -610,12 +613,15 @@ async def get_taf(icao: str = Query(..., min_length=3, max_length=4)):
     url = f"https://aviationweather.gov/api/data/taf?ids={icao_up}&format=json"
     async with httpx.AsyncClient(timeout=15.0) as http_client:
         r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
-        if r.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"TAF provider error: {r.status_code}")
-        try:
-            data = r.json()
-        except Exception:
+        if r.status_code == 204:
             data = []
+        elif r.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"TAF provider error: {r.status_code}")
+        else:
+            try:
+                data = r.json()
+            except Exception:
+                data = []
         if not data:
             return {"icao": icao_up, "available": False, "raw": None}
         t = data[0]
