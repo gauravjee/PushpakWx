@@ -105,4 +105,29 @@ export const api = {
   getPrefs: () => request<Prefs>('/prefs', {}, true),
   updatePrefs: (p: Prefs) =>
     request<Prefs>('/prefs', { method: 'PUT', body: JSON.stringify(p) }, true),
+  getMetar: (icao: string) =>
+    request<{
+      icao: string;
+      available: boolean;
+      raw: string | null;
+      observation_time?: string | null;
+      temp_c?: number | null;
+      dewpoint_c?: number | null;
+      wind_dir?: number | null;
+      wind_speed_kt?: number | null;
+      wind_gust_kt?: number | null;
+      visibility?: string | number | null;
+      altimeter?: number | null;
+      flight_category?: string | null;
+      clouds?: { cover: string; base: number | null }[] | null;
+    }>(`/aviation/metar?icao=${encodeURIComponent(icao)}`),
+  getTaf: (icao: string) =>
+    request<{
+      icao: string;
+      available: boolean;
+      raw: string | null;
+      issue_time?: string | null;
+      valid_from?: number | null;
+      valid_to?: number | null;
+    }>(`/aviation/taf?icao=${encodeURIComponent(icao)}`),
 };

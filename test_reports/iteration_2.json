@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 2 tests focused on (1) OTP rate-limiting + per-email cooldown, (2) METAR/TAF endpoints, (3) InFlight tab + permission screen, (4) METAR/TAF dashboard integration when ICAO present, (5) regression of existing auth flow. Backend: 8/9 pytest cases PASS (rate limit 5/hr, IP counter reset after backend restart, per-email 60s cooldown for register, forgot-password cooldown swallowed to generic 200, login 20/min, METAR+TAF KJFK, iteration_1 regression via test_auth_and_api.py still 25/25). Frontend: 5th tab INFLIGHT visible with correct order WX/INFLIGHT/SEARCH/SAVED/SETUP; permission screen renders with all copy, 3 benefits, ENABLE LOCATION button; dashboard for KJFK shows 'OFFICIAL WX · METAR / TAF' with valid raw METAR and TAF strings. TWO REAL BUGS FOUND — see below.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/aviation/metar (and /taf) with unknown ICAO", "issue": "aviationweather.gov returns HTTP 204 (No Content) for unknown ICAOs; server.py only treats 200 as success and raises 502. Spec requires {available:false, raw:null}. Fix: accept 200 AND 204 (or check response body length) and return the available:false payload instead of raising. server.py:582 and :614.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "startup", "issue": "@app.on_event still used (deprecated). Non-blocking, carried over from iteration_1."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/(tabs)/inflight.tsx", "issue": "ReferenceError: 'setPrePermission is not defined' — called at line 30 (inside getForegroundPermissionsAsync().status==='granted' branch) and line 86 (inside requestPermission() granted branch). No corresponding useState hook exists. In web the React error overlay masks the failure, but on Expo Go / native builds this will hard-crash the InFlight screen the moment the user grants location permission (or on any subsequent load once permission was previously granted). Remove both setPrePermission(false) calls OR add a useState<boolean>('prePermission') and its setter.", "testID": "inflight-permission-screen / inflight-screen", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "react-native-web modal/overlay internal", "issue": "Console warning 'props.pointerEvents is deprecated. Use style.pointerEvents' — carried from iteration_1, non-blocking."},
+      {"component": "expo-location on web", "issue": "'Location.watchDeviceHeading: is not supported on web' — expected (heading only available on native). Not a bug, just noise."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ratelimit_and_aviation.py",
+    "/app/backend/tests/test_auth_and_api.py",
+    "/app/test_reports/pytest/iter2_ratelimit.xml"
+  ],
+  "action_items": [
+    "CRITICAL: In /app/frontend/app/(tabs)/inflight.tsx, remove the two setPrePermission(false) calls (lines 30 and 86) OR add const [prePermission, setPrePermission] = useState(true) at the top of the component. Current code will crash the InFlight tab on native as soon as location is granted.",
+    "HIGH: In /app/backend/server.py get_metar (line ~579) and get_taf (line ~610), treat HTTP 204 as an empty/available:false response (same behaviour as empty JSON array) instead of raising 502. Suggested fix: change `if r.status_code != 200` to `if r.status_code not in (200, 204)`.",
+    "OPTIONAL: Migrate FastAPI @app.on_event('startup'/'shutdown') to a lifespan handler (carried over)."
+  ],
+  "critical_code_review_comments": [
+    "Rate-limiter uses in-memory storage per slowapi default — correct as spec but stateless per pod; if backend runs multiple replicas the per-IP counters would be inconsistent. Fine for MVP.",
+    "create_and_send_otp() reads the 'created_at' field of the existing OTP for the (email, purpose) tuple to enforce the 60s cooldown — this is correctly enforced BEFORE the OTP is regenerated. Good.",
+    "forgot_password() correctly swallows HTTPException(429) from the cooldown so as not to leak account existence; returns the generic 200 message either way.",
+    "Aviation endpoints correctly use httpx.AsyncClient with a proper User-Agent header (aviationweather.gov requires one).",
+    "New INFLIGHT tab is inserted in the correct position, has an Ionicons icon, and permission-screen contents all have testIDs including grant-location-button and open-settings-button for the blocked path."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ratelimit_and_aviation.py (NEW)"
+  ],
+  "success_rate": {"backend": "89% (8/9 iter2 + 25/25 iter1 regression = 33/34 combined)", "frontend": "80% — all screens & tabs render correctly, METAR/TAF integration works, but a runtime ReferenceError fires when permission is granted"},
+  "seed_data_creation": "Ephemeral test users created and cleaned up (users/otps/prefs/favorites deleted after each test class). Test suite restarts backend to reset the in-memory rate-limiter between runs.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "IP-based rate limits are in-memory; run `sudo supervisorctl restart backend` before any register/login-heavy test. Some outbound calls from the automated browser environment via urllib get Cloudflare-403 without a browser User-Agent — set a Mozilla UA when hitting /api/auth/register from within the browser sandbox. To log in a test user on the frontend, drive the UI (Sign in form) rather than seeding localStorage — auth token key is 'pw_auth_token' and stored JSON-stringified via storage.secureSet. aviationweather.gov returns 204 for unknown ICAOs, not 200 with empty body.",
+  "rca_of_issue": "Bug 1 (setPrePermission): Likely a rename/refactor leftover. The state used to be split into two flags (prePermission + permStatus) and was collapsed to permStatus only, but two setPrePermission(false) calls were left behind. Reproduction: open the app, log in, tap INFLIGHT, tap ENABLE LOCATION, allow permission — page-error fires with 'setPrePermission is not defined'. Mitigation: delete both calls at lines 30 & 86 of inflight.tsx. Bug 2 (METAR 502): aviationweather.gov returns 204 No Content for ICAOs it doesn't recognize; server.py raises 502 on any non-200. Fix: accept 204 as an empty result branch."
+}

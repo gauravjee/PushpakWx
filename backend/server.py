@@ -1,8 +1,11 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 import logging
 from pathlib import Path
@@ -36,6 +39,11 @@ FROM_EMAIL = os.environ.get('FROM_EMAIL', 'onboarding@resend.dev')
 app = FastAPI(title="PushpakWX API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ============= MODELS =============
 
@@ -206,7 +214,20 @@ def reset_email_html(code: str) -> str:
     </div>
     """
 
-async def create_and_send_otp(email: str, purpose: str, name: Optional[str] = None) -> str:
+async def create_and_send_otp(email: str, purpose: str, name: Optional[str] = None, enforce_cooldown: bool = True) -> str:
+    """Create and send OTP. Enforces 60s cooldown per (email, purpose) if enforce_cooldown."""
+    if enforce_cooldown:
+        existing = await db.otps.find_one({"email": email, "purpose": purpose})
+        if existing:
+            created_at_str = existing.get("created_at")
+            if created_at_str:
+                created_at = datetime.fromisoformat(created_at_str)
+                elapsed = (datetime.now(timezone.utc) - created_at).total_seconds()
+                if elapsed < 60:
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Please wait {int(60 - elapsed)}s before requesting another code",
+                    )
     code = generate_otp()
     await db.otps.delete_many({"email": email, "purpose": purpose})
     await db.otps.insert_one({
@@ -214,6 +235,7 @@ async def create_and_send_otp(email: str, purpose: str, name: Optional[str] = No
         "purpose": purpose,
         "code": code,
         "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "attempts": 0,
     })
     subject = "Verify your PushpakWX email" if purpose == "verify" else "Reset your PushpakWX password"
@@ -302,7 +324,8 @@ async def root():
     return {"message": "PushpakWX API", "status": "ok"}
 
 @api_router.post("/auth/register")
-async def register(payload: UserCreate):
+@limiter.limit("5/hour")
+async def register(request: Request, payload: UserCreate):
     email_low = payload.email.lower()
     existing = await db.users.find_one({"email": email_low})
     if existing:
@@ -335,7 +358,8 @@ async def register(payload: UserCreate):
     return {"message": "Verification code sent", "email": email_low, "requires_verification": True}
 
 @api_router.post("/auth/verify-email", response_model=Token)
-async def verify_email(payload: VerifyEmailRequest):
+@limiter.limit("10/hour")
+async def verify_email(request: Request, payload: VerifyEmailRequest):
     email_low = payload.email.lower()
     ok = await verify_otp(email_low, payload.code, "verify")
     if not ok:
@@ -352,7 +376,8 @@ async def verify_email(payload: VerifyEmailRequest):
     )
 
 @api_router.post("/auth/resend-verification")
-async def resend_verification(payload: ResendVerificationRequest):
+@limiter.limit("5/hour")
+async def resend_verification(request: Request, payload: ResendVerificationRequest):
     email_low = payload.email.lower()
     user = await db.users.find_one({"email": email_low})
     if not user:
@@ -364,13 +389,17 @@ async def resend_verification(payload: ResendVerificationRequest):
     return {"message": "Verification code sent"}
 
 @api_router.post("/auth/login", response_model=Token)
-async def login(payload: UserLogin):
+@limiter.limit("20/minute")
+async def login(request: Request, payload: UserLogin):
     user = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
     if not user or not verify_password(payload.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     if not user.get("email_verified"):
-        # trigger resend for convenience
-        await create_and_send_otp(user["email"], "verify", user.get("full_name"))
+        # trigger resend (best-effort, ignore cooldown errors)
+        try:
+            await create_and_send_otp(user["email"], "verify", user.get("full_name"))
+        except HTTPException:
+            pass
         raise HTTPException(
             status_code=403,
             detail="Email not verified. A new code has been sent to your email.",
@@ -382,16 +411,23 @@ async def login(payload: UserLogin):
     )
 
 @api_router.post("/auth/forgot-password")
-async def forgot_password(payload: ForgotPasswordRequest):
+@limiter.limit("5/hour")
+async def forgot_password(request: Request, payload: ForgotPasswordRequest):
     email_low = payload.email.lower()
     user = await db.users.find_one({"email": email_low})
     # Do not leak whether user exists — always return same message
     if user and user.get("email_verified"):
-        await create_and_send_otp(email_low, "reset", user.get("full_name"))
+        try:
+            await create_and_send_otp(email_low, "reset", user.get("full_name"))
+        except HTTPException as e:
+            # If cooldown active, still return generic message
+            if e.status_code != 429:
+                raise
     return {"message": "If an account exists for this email, a reset code has been sent"}
 
 @api_router.post("/auth/reset-password")
-async def reset_password(payload: ResetPasswordRequest):
+@limiter.limit("10/hour")
+async def reset_password(request: Request, payload: ResetPasswordRequest):
     email_low = payload.email.lower()
     if len(payload.new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
@@ -532,6 +568,65 @@ async def geocode(q: str = Query(..., min_length=1)):
             raise HTTPException(status_code=502, detail="Geocoder unavailable")
         data = r.json()
         return {"results": data.get("results", [])}
+
+
+# ---------- METAR / TAF (aviationweather.gov) ----------
+@api_router.get("/aviation/metar")
+async def get_metar(icao: str = Query(..., min_length=3, max_length=4)):
+    """Fetch latest METAR for an ICAO from aviationweather.gov (US NOAA)."""
+    icao_up = icao.upper()
+    url = f"https://aviationweather.gov/api/data/metar?ids={icao_up}&format=json&taf=false&hours=2"
+    async with httpx.AsyncClient(timeout=15.0) as http_client:
+        r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"METAR provider error: {r.status_code}")
+        try:
+            data = r.json()
+        except Exception:
+            data = []
+        if not data:
+            return {"icao": icao_up, "available": False, "raw": None, "observation_time": None}
+        m = data[0]
+        return {
+            "icao": icao_up,
+            "available": True,
+            "raw": m.get("rawOb"),
+            "observation_time": m.get("reportTime"),
+            "temp_c": m.get("temp"),
+            "dewpoint_c": m.get("dewp"),
+            "wind_dir": m.get("wdir"),
+            "wind_speed_kt": m.get("wspd"),
+            "wind_gust_kt": m.get("wgst"),
+            "visibility": m.get("visib"),
+            "altimeter": m.get("altim"),
+            "flight_category": m.get("fltCat"),
+            "clouds": m.get("clouds"),
+        }
+
+@api_router.get("/aviation/taf")
+async def get_taf(icao: str = Query(..., min_length=3, max_length=4)):
+    """Fetch latest TAF for an ICAO from aviationweather.gov (US NOAA)."""
+    icao_up = icao.upper()
+    url = f"https://aviationweather.gov/api/data/taf?ids={icao_up}&format=json"
+    async with httpx.AsyncClient(timeout=15.0) as http_client:
+        r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"TAF provider error: {r.status_code}")
+        try:
+            data = r.json()
+        except Exception:
+            data = []
+        if not data:
+            return {"icao": icao_up, "available": False, "raw": None}
+        t = data[0]
+        return {
+            "icao": icao_up,
+            "available": True,
+            "raw": t.get("rawTAF"),
+            "issue_time": t.get("issueTime"),
+            "valid_from": t.get("validTimeFrom"),
+            "valid_to": t.get("validTimeTo"),
+        }
 
 
 app.include_router(api_router)

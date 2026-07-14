@@ -28,6 +28,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="inflight"
+        options={{
+          title: 'INFLIGHT',
+          tabBarIcon: ({ color, size }) => <Ionicons name="airplane-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="search"
         options={{
           title: 'SEARCH',

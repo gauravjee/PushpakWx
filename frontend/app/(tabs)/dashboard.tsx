@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { colors, spacing, radius } from '@/src/theme';
 import { api, Airport } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
@@ -33,9 +33,10 @@ type LocationInfo = {
 export default function Dashboard() {
   const params = useLocalSearchParams<{ lat?: string; lon?: string; label?: string; sub?: string; icao?: string; elevation?: string }>();
   const { prefs } = usePrefs();
-  const router = useRouter();
   const [loc, setLoc] = useState<LocationInfo | null>(null);
   const [wx, setWx] = useState<any>(null);
+  const [metar, setMetar] = useState<any>(null);
+  const [taf, setTaf] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,8 @@ export default function Dashboard() {
   const loadForLocation = useCallback(async (info: LocationInfo) => {
     setError(null);
     setLoc(info);
+    setMetar(null);
+    setTaf(null);
     try {
       const data = await api.forecast(info.lat, info.lon);
       setWx(data);
@@ -53,6 +56,14 @@ export default function Dashboard() {
         const match = favs.find(f => (info.icao && f.icao === info.icao) || (Math.abs(f.lat - info.lat) < 0.01 && Math.abs(f.lon - info.lon) < 0.01));
         if (match) setLoc(prev => prev ? { ...prev, isFavorite: true, favoriteId: match.id } : prev);
       } catch {}
+      // Fetch METAR/TAF if we have an ICAO
+      if (info.icao) {
+        try {
+          const [m, t] = await Promise.all([api.getMetar(info.icao), api.getTaf(info.icao)]);
+          setMetar(m);
+          setTaf(t);
+        } catch {}
+      }
     } catch (e: any) {
       setError(e.message || 'Failed to load weather');
     }
@@ -79,7 +90,7 @@ export default function Dashboard() {
         }
       } catch {}
       await loadForLocation({ label, sub, lat: latitude, lon: longitude });
-    } catch (e: any) {
+    } catch {
       await loadForLocation({ label: 'KJFK', sub: 'Fallback · New York', lat: 40.6413, lon: -73.7781, icao: 'KJFK', elevation_ft: 13 });
     }
   }, [loadForLocation]);
@@ -254,6 +265,52 @@ export default function Dashboard() {
           </View>
         )}
 
+        {/* Official METAR/TAF */}
+        {loc.icao && (metar || taf) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>OFFICIAL WX · METAR / TAF</Text>
+            {metar?.available ? (
+              <View style={styles.metarCard} testID="metar-card">
+                <View style={styles.metarHeader}>
+                  <Text style={styles.metarLabel}>METAR</Text>
+                  {metar.flight_category ? (
+                    <FlightConditionBadge category={metar.flight_category as any} size="sm" />
+                  ) : null}
+                  {metar.observation_time ? (
+                    <Text style={styles.metarTime}>
+                      {new Date(metar.observation_time).toUTCString().slice(17, 22)}Z
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.rawText} selectable testID="metar-raw">{metar.raw}</Text>
+              </View>
+            ) : (
+              <View style={styles.metarCard}>
+                <Text style={styles.metarLabel}>METAR</Text>
+                <Text style={styles.metarUnavail}>Not available for {loc.icao}</Text>
+              </View>
+            )}
+            {taf?.available ? (
+              <View style={[styles.metarCard, { marginTop: spacing.sm }]} testID="taf-card">
+                <View style={styles.metarHeader}>
+                  <Text style={styles.metarLabel}>TAF</Text>
+                  {taf.issue_time ? (
+                    <Text style={styles.metarTime}>
+                      {new Date(taf.issue_time).toUTCString().slice(17, 22)}Z
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.rawText} selectable testID="taf-raw">{taf.raw}</Text>
+              </View>
+            ) : (
+              <View style={[styles.metarCard, { marginTop: spacing.sm }]}>
+                <Text style={styles.metarLabel}>TAF</Text>
+                <Text style={styles.metarUnavail}>Not available for {loc.icao}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Wind rose */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>WIND</Text>
@@ -377,4 +434,18 @@ const styles = StyleSheet.create({
   },
   detailLabel: { color: colors.onSurfaceSecondary, fontSize: 11, letterSpacing: 1 },
   detailValue: { color: colors.onSurface, fontSize: 18, fontWeight: '700' },
+  metarCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  metarHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  metarLabel: { color: colors.brand, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
+  metarTime: { color: colors.onSurfaceTertiary, fontSize: 10, marginLeft: 'auto', letterSpacing: 1 },
+  metarUnavail: { color: colors.onSurfaceTertiary, fontSize: 11, fontStyle: 'italic' },
+  rawText: { color: colors.onSurface, fontSize: 12, fontFamily: 'monospace', lineHeight: 18, letterSpacing: 0.5 },
 });
