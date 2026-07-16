@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '@/src/theme';
 import { api, Airport } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
@@ -73,9 +73,10 @@ export default function Dashboard() {
 
   const initGPS = useCallback(async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        // Fallback: default to KJFK
+      // Only use GPS if permission has ALREADY been granted (don't prompt on WX tab).
+      // Permission is requested contextually inside the InFlight tab.
+      const p = await Location.getForegroundPermissionsAsync();
+      if (p.status !== 'granted') {
         await loadForLocation({ label: 'KJFK', sub: 'John F Kennedy Intl · New York', lat: 40.6413, lon: -73.7781, icao: 'KJFK', elevation_ft: 13 });
         return;
       }
@@ -115,6 +116,23 @@ export default function Dashboard() {
       setLoading(false);
     })();
   }, [params.lat, params.lon, params.label, params.sub, params.icao, params.elevation, initGPS, loadForLocation]);
+
+  // When user returns to WX tab with no airport param, re-check GPS silently
+  // (in case they just granted permission via InFlight tab).
+  useFocusEffect(
+    useCallback(() => {
+      if (params.lat || params.lon) return;
+      if (!loc || loc.icao === 'KJFK') {
+        // Only re-check if we're on fallback or not yet loaded
+        (async () => {
+          const p = await Location.getForegroundPermissionsAsync();
+          if (p.status === 'granted') {
+            await initGPS();
+          }
+        })();
+      }
+    }, [params.lat, params.lon, loc, initGPS])
+  );
 
   const onRefresh = async () => {
     if (!loc) return;

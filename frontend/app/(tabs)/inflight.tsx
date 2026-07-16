@@ -5,10 +5,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { colors, spacing, radius } from '@/src/theme';
 import { CompassRose } from '@/src/components/CompassRose';
+import { FlightTrackMap, TrackSample } from '@/src/components/FlightTrackMap';
 import { usePrefs } from '@/src/context/PrefsContext';
 import { convertWind, convertAlt, windUnitLabel, altUnitLabel } from '@/src/utils/weather';
 
-type Sample = { t: number; altFt: number; speedKt: number };
+type Sample = TrackSample;
+
+// Retain samples for up to 2 hours (7200 samples at 1 Hz)
+const TRACK_MAX_SAMPLES = 7200;
+const TRACK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 export default function InFlight() {
   const { prefs } = usePrefs();
@@ -19,6 +24,7 @@ export default function InFlight() {
   const [samples, setSamples] = useState<Sample[]>([]);
   const locSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgSubRef = useRef<Location.LocationSubscription | null>(null);
+  const hdgRef = useRef<number>(0);
 
   // Check current permission on mount
   useEffect(() => {
@@ -52,17 +58,28 @@ export default function InFlight() {
             const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
             setSamples(prev => {
-              const next = [...prev, { t: now, altFt, speedKt }];
-              // Keep last 5 minutes
-              const cutoff = now - 5 * 60 * 1000;
-              return next.filter(s => s.t >= cutoff).slice(-300);
+              const currentHeading = hdgRef.current;
+              const next = [...prev, {
+                t: now,
+                lat: l.coords.latitude,
+                lon: l.coords.longitude,
+                altFt,
+                speedKt,
+                heading: currentHeading,
+              }];
+              // Keep last 2 hours
+              const cutoff = now - TRACK_MAX_AGE_MS;
+              return next.filter(s => s.t >= cutoff).slice(-TRACK_MAX_SAMPLES);
             });
           },
         );
         hdgSubRef.current = await Location.watchHeadingAsync((h) => {
           if (cancelled) return;
           const val = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
-          if (val >= 0) setHeading(val);
+          if (val >= 0) {
+            setHeading(val);
+            hdgRef.current = val;
+          }
         });
       } catch {
         // ignore
@@ -207,10 +224,19 @@ export default function InFlight() {
           />
         </View>
 
+        {/* Flight track map */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>FLIGHT TRACK · UP TO 2H</Text>
+            <Text style={styles.sectionSub}>{samples.length}/{TRACK_MAX_SAMPLES}</Text>
+          </View>
+          <FlightTrackMap samples={samples} height={240} />
+        </View>
+
         {/* Track log */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>TRACK LOG · LAST 5 MIN</Text>
+            <Text style={styles.sectionTitle}>ALT / SPEED HISTORY</Text>
             <Text style={styles.sectionSub}>{samples.length} samples</Text>
           </View>
           <TrackLog samples={samples} prefs={prefs} />
