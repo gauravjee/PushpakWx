@@ -25,9 +25,19 @@ A React Native (Expo) mobile app for pilots providing hourly weather forecasts, 
 ### Dashboard (WX tab)
 - Current weather with wind rose, flight condition badge (VFR/MVFR/IFR/LIFR)
 - Estimated ceiling, visibility, temp, cloud cover
+- **Runway wind component calculator** — enter runway heading (1–36 or 0–360°), instantly see headwind/tailwind + crosswind components (with gust values, high-crosswind warning)
 - **Thunderstorm alert** if forecast within 12h
-- **Hourly forecast strip** (24h) with wind/gust/cloud/precip
 - **OFFICIAL WX section** (METAR + TAF from aviationweather.gov) when ICAO is available
+- **Hourly forecast strip** (24h) with wind/gust/cloud/precip
+- **ROUTE button** in header opens Route WX planner
+
+### Route WX planner (/route)
+- Departure + optional fuel stops + destination airports (via ICAO/IATA/city search)
+- Cruise speed input (default 120 kt)
+- Great-circle distances → cumulative ETA per waypoint
+- Per-waypoint forecast at expected ETA (temp, wind/gust, flight category)
+- Per-waypoint METAR-now badge (if ICAO)
+- Route summary: total distance, flight time, worst-case flight category along the route
 
 ### InFlight tab (NEW)
 - Live GPS altitude, magnetic heading, ground speed, GPS accuracy

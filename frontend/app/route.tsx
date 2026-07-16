@@ -141,7 +141,7 @@ export default function RouteScreen() {
           windDir: wx.hourly.wind_direction_10m[bestIdx],
           gust: wx.hourly.wind_gusts_10m[bestIdx],
           weatherCode: wx.hourly.weather_code[bestIdx],
-          cloud,
+          cloud: cover,
           precip: wx.hourly.precipitation[bestIdx],
           ceilingFt,
           category,
