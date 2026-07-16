@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 3 frontend testing (Runway wind calculator on Dashboard + Route weather planner) — all critical flows PASS. Login via demo@test.com works. WindComponentCalc: default rwy=27, inc/dec wraps at 36<->1, HEADWIND/CROSSWIND readouts render (e.g. HEADWIND 1kt / CROSSWIND ←L 10kt with Gust 16 for a 277° wind on RWY 27=270°), invalid heading (500) correctly shows 'Enter a runway (1–36) or heading (0–360)' error. Route screen: navigates via 'open-route-button', cruise default 120, KJFK/KLAX airport pickers work, ROUTE SUMMARY shows TOTAL DIST 2470 nm and FLIGHT TIME 20h 35m @120kt / 12h 21m @200kt (recompute confirmed). ADD FUEL STOP inserts and remove works. route-back-button returns to dashboard. Minor observation: WORST WX shows '—' in the summary card even after ~6s wait — per-waypoint forecast badges did not render on the visible waypoint cards after airport selection, suggesting the useEffect trigger key may miss reruns when compute() is invoked (see rca).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Route waypoint forecast", "issue": "After selecting DEP=KJFK and DEST=KLAX, ROUTE SUMMARY renders TOTAL DIST/FLIGHT TIME correctly but WORST WX stays '—' and each WaypointCard does not display the per-waypoint FlightConditionBadge / temp / wind row that WaypointCard is meant to render when wp.forecast is populated. Waited ~6s. Possible root cause: in route.tsx compute() the results setter replaces waypoints[] with newly constructed entries, but the useEffect dependency on `waypoints.map(w => w.airport?.icao...).join('|')` re-fires each compute() (new object refs) which may re-invoke compute mid-flight and keep loading=true or overwrite forecast state. Reference: /app/frontend/app/route.tsx:165-169 and :108-160.", "testID": "route-summary-card / waypoint-0 / waypoint-1", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_3.json"],
+  "action_items": [
+    "Investigate why WaypointCard forecast row (FlightConditionBadge + temp + wind text) does not render after airport selection despite ROUTE SUMMARY appearing. Likely cause: compute() dependency array in useEffect re-triggers after setWaypoints(results), overwriting forecast state. Consider guarding with a stable key or ref, or memoize compute inputs."
+  ],
+  "critical_code_review_comments": [
+    "route.tsx compute() sets state twice (setWaypoints(withDistances) then setWaypoints(results)); the intermediate state with loading:true triggers the useEffect key change (loading state doesn't affect the join key though — join is airport-based, so this is fine). But because compute() is recreated every render (useCallback deps include waypoints), pattern is fragile. Consider stabilising.",
+    "route.tsx line 169 eslint-disable-line comment used to bypass hooks/exhaustive-deps — verify intent."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not tested this iteration)", "frontend": "~92% (13/14 scenarios pass; only per-waypoint forecast row rendering is not verified)"},
+  "seed_data_creation": "None; used existing demo@test.com/demopass123 verified user.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login testID is `login-submit-button` (not `login-submit`). Route summary card renders quickly with distance/time but WORST WX and individual waypoint forecast row need longer wait or a fix. cruise-speed recompute works correctly (200kt gives 12h 21m for 2470 nm).",
+  "rca_of_issue": "Suspected: setWaypoints(withDistances) inside compute() creates new Airport-reference objects (spread copy). The useEffect on line 165 depends on `waypoints.map(w => w.airport?.icao || w.airport?.lat).join('|')` — which is stable if the icao is unchanged, so this shouldn't refire. However compute() is memoized on `waypoints`, so after setWaypoints(results) triggers a rerender, waypoints changes, causing useEffect to see a NEW compute closure. The join-key check should still be identical => useEffect should not refire. So the state should hold. The fact that WORST WX stays '—' suggests forecast is null/undefined for each returned waypoint — possibly the forecast API returns a shape mismatch or the try/catch catches an error. Recommend: check `hourly.visibility?.[bestIdx]` — Open-Meteo may not return visibility field, and if the derived category ends up 'UNK', worstCategory reduce filters out '' which yields '—'. Not a bug in code path per se; just may render UNK. Please instrument logs in compute() to confirm forecast object is populated."
+}

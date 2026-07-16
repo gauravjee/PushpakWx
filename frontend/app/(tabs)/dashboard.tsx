@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors, spacing, radius } from '@/src/theme';
 import { api, Airport } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
@@ -17,6 +17,7 @@ import {
 import { FlightConditionBadge } from '@/src/components/FlightConditionBadge';
 import { WindRose } from '@/src/components/WindRose';
 import { HourlyStrip } from '@/src/components/HourlyStrip';
+import { WindComponentCalc } from '@/src/components/WindComponentCalc';
 
 type LocationInfo = {
   label: string;
@@ -33,6 +34,7 @@ type LocationInfo = {
 export default function Dashboard() {
   const params = useLocalSearchParams<{ lat?: string; lon?: string; label?: string; sub?: string; icao?: string; elevation?: string }>();
   const { prefs } = usePrefs();
+  const router = useRouter();
   const [loc, setLoc] = useState<LocationInfo | null>(null);
   const [wx, setWx] = useState<any>(null);
   const [metar, setMetar] = useState<any>(null);
@@ -222,6 +224,10 @@ export default function Dashboard() {
             <Text style={styles.locLabel} numberOfLines={1}>{loc.label}</Text>
             <Text style={styles.locSub} numberOfLines={1}>{loc.sub || `${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}`}</Text>
           </View>
+          <Pressable onPress={() => router.push('/route')} style={styles.routeBtn} testID="open-route-button">
+            <Ionicons name="map-outline" size={16} color={colors.brand} />
+            <Text style={styles.routeBtnText}>ROUTE</Text>
+          </Pressable>
           <Pressable onPress={toggleFavorite} style={styles.favBtn} testID="fav-toggle-button">
             <Ionicons
               name={loc.isFavorite ? 'star' : 'star-outline'}
@@ -325,6 +331,16 @@ export default function Dashboard() {
           </View>
         </View>
 
+        {/* Runway wind component calculator */}
+        <View style={{ marginTop: spacing.md }}>
+          <WindComponentCalc
+            windDirDeg={windDir}
+            windSpeedKt={windKt}
+            gustKt={gustKt}
+            unit={prefs.wind_unit}
+          />
+        </View>
+
         {/* Hourly forecast */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>HOURLY · NEXT 24H</Text>
@@ -382,6 +398,18 @@ const styles = StyleSheet.create({
   locLabel: { color: colors.onSurface, fontSize: 26, fontWeight: '800', letterSpacing: 1 },
   locSub: { color: colors.onSurfaceSecondary, fontSize: 12, marginTop: 2 },
   favBtn: { padding: spacing.sm, backgroundColor: colors.surfaceSecondary, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  routeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.brand,
+  },
+  routeBtnText: { color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
   condCard: {
     marginHorizontal: spacing.lg,
     backgroundColor: colors.surfaceSecondary,
