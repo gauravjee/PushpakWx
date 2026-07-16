@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -73,7 +73,7 @@ export default function InFlight() {
             });
           },
         );
-        hdgSubRef.current = await Location.watchHeadingAsync((h) => {
+        hdgSubRef.current = Platform.OS === 'web' ? null : await Location.watchHeadingAsync((h) => {
           if (cancelled) return;
           const val = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
           if (val >= 0) {
