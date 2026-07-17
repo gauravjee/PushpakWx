@@ -102,7 +102,7 @@ export function CompassRose({ heading, size = 260 }: { heading: number; size?: n
       <View style={[styles.topMarker, { top: half - inner / 2 - 4 }]} />
 
       {/* Center readout */}
-      <View style={styles.center} pointerEvents="none">
+      <View style={[styles.center, { pointerEvents: 'none' }]}>
         <Text style={styles.heading}>{Math.round(heading).toString().padStart(3, '0')}°</Text>
         <Text style={styles.dir}>{windDirLabel(heading)}</Text>
         <Text style={styles.mag}>MAG</Text>

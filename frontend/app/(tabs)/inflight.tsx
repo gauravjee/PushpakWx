@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform, Modal, TextInput, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -21,6 +21,8 @@ const TRACK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 export default function InFlight() {
   const { prefs } = usePrefs();
   const router = useRouter();
+  const { width: winWidth } = useWindowDimensions();
+  const compassSize = winWidth < 400 ? 220 : 260;
   const [permStatus, setPermStatus] = useState<'undetermined' | 'granted' | 'denied' | 'checking'>('checking');
   const [canAskAgain, setCanAskAgain] = useState(true);
   const [loc, setLoc] = useState<Location.LocationObject | null>(null);
@@ -393,7 +395,7 @@ export default function InFlight() {
 
         {/* Compass */}
         <View style={{ alignItems: 'center', paddingVertical: spacing.md }}>
-          <CompassRose heading={heading} size={260} />
+          <CompassRose heading={heading} size={compassSize} />
         </View>
 
         {/* Big metrics */}
