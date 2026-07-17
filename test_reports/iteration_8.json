@@ -1,0 +1,22 @@
+{
+  "summary": "Verified the 'Weather unavailable' bug fix. Open-Meteo is currently returning 429 (quota exhausted), so the newly added wttr.in fallback is actively serving data. Backend forecast/METAR/TAF endpoints return 200 with the expected shape and _provider label; 5-min TTL cache verified (_cache.hit becomes true on 2nd call). Frontend dashboard renders correctly for demo@test.com — flight-condition-card (MVFR), METAR/TAF cards, wind rose and hourly data all populated. No dashboard-error element rendered. All 9 pytest tests pass (backend + regression: auth, prefs, favorites, flights CRUD/export).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_weather_cache_iter8.py",
+    "/app/test_reports/pytest/iter8_weather_cache.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~1030 lines — consider splitting into routers (auth, weather, flights) for maintainability, though not blocking.",
+    "wx_cache collection has no MongoDB TTL index; entries older than STALE_MAX_AGE_S (6h) are never garbage-collected. Consider adding an expireAfterSeconds index on fetched_at (converted to Date) or a periodic cleanup job.",
+    "In weather_forecast, `logger` is referenced before it is defined (logger is assigned at line 1028, after the endpoint). This works because it's used only at call time (module-globals resolution), but is fragile — move logging.basicConfig/getLogger to the top of the file."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. Tests self-register/verify/delete ephemeral users; existing demo@test.com (verified) reused for UI flow.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Fix stack: wx_cache collection in MongoDB stores forecast/metar/taf under keys like 'forecast:{lat}:{lon}', 'metar:KJFK'. 5/5/15-min TTL, up to 6h stale served if both providers fail. wttr.in fallback (?format=j1) invoked when Open-Meteo != 200. Verified via real HTTP: current Open-Meteo is quota-exhausted so wttr.in is actually returning payloads (_provider=='wttr.in'). If Open-Meteo quota resets, tests still pass (they accept either provider).",
+  "rca_of_issue": "Original bug: Open-Meteo daily 10k quota exhausted → backend returned 502 → dashboard rendered 'Weather unavailable'. Fix (verified): (1) TTL cache in wx_cache Mongo collection, (2) wttr.in fallback with response-shape normalization to Open-Meteo schema, (3) same cache+stale semantics for METAR/TAF. Reproduced end-to-end: GET /api/weather/forecast?lat=40.6413&lon=-73.7781 → 200 with _provider='wttr.in'. Dashboard for demo@test.com loads fully populated."
+}

@@ -501,9 +501,153 @@ async def get_airport(icao: str):
     return ap
 
 # ---------- Weather ----------
+FORECAST_CACHE_TTL_S = 300     # 5 min
+METAR_CACHE_TTL_S = 300        # 5 min
+TAF_CACHE_TTL_S = 900          # 15 min
+STALE_MAX_AGE_S = 6 * 3600     # serve stale up to 6h if provider is down
+
+async def _cache_get(key: str, ttl_s: int) -> Optional[dict]:
+    doc = await db.wx_cache.find_one({"_id": key})
+    if not doc:
+        return None
+    fetched_at = doc.get("fetched_at", 0)
+    age = datetime.now(timezone.utc).timestamp() - fetched_at
+    if age <= ttl_s:
+        return {"fresh": True, "data": doc["data"], "age_s": int(age)}
+    if age <= STALE_MAX_AGE_S:
+        return {"fresh": False, "data": doc["data"], "age_s": int(age)}
+    return None
+
+async def _cache_put(key: str, data: dict) -> None:
+    await db.wx_cache.update_one(
+        {"_id": key},
+        {"$set": {
+            "data": data,
+            "fetched_at": datetime.now(timezone.utc).timestamp(),
+        }},
+        upsert=True,
+    )
+
+async def _fetch_wttr_forecast(lat: float, lon: float) -> Optional[dict]:
+    """Fallback weather provider: wttr.in returns JSON at ?format=j1 (3-hourly, no key required)."""
+    url = f"https://wttr.in/{lat},{lon}?format=j1"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            r = await http_client.get(url, headers={"User-Agent": "curl/PushpakWX/1.0"})
+            if r.status_code != 200:
+                return None
+            wj = r.json()
+    except Exception:
+        return None
+
+    # wttr weather-code → open-meteo weather-code approximation
+    def _map_code(code: int) -> int:
+        if code in (113,): return 0
+        if code in (116,): return 2
+        if code in (119, 122): return 3
+        if code in (143, 248, 260): return 45
+        if code in (176, 263, 266, 281, 284, 293, 296): return 61
+        if code in (299, 302, 305): return 63
+        if code in (308, 311, 314): return 65
+        if code in (317, 320, 323, 326, 350, 362, 365, 368): return 71
+        if code in (329, 332, 335, 371, 374): return 73
+        if code in (338, 377): return 75
+        if code in (353, 356, 359): return 80
+        if code in (386, 389): return 95
+        if code in (392, 395): return 99
+        return 3
+
+    from datetime import datetime as _dt
+    current = (wj.get("current_condition") or [{}])[0]
+    weather_days = wj.get("weather") or []
+    hourly_times = []
+    hourly_temp = []
+    hourly_wind = []
+    hourly_dir = []
+    hourly_gust = []
+    hourly_code = []
+    hourly_cloud = []
+    hourly_precip = []
+    hourly_press = []
+    hourly_rh = []
+    hourly_vis = []
+    hourly_low = []
+    hourly_mid = []
+    hourly_high = []
+    for day in weather_days[:2]:
+        date_str = day.get("date")
+        if not date_str:
+            continue
+        for h in day.get("hourly", []):
+            try:
+                hh = int(h.get("time", "0"))
+            except Exception:
+                hh = 0
+            hour_num = hh // 100
+            iso = f"{date_str}T{hour_num:02d}:00"
+            hourly_times.append(iso)
+            hourly_temp.append(float(h.get("tempC", 0) or 0))
+            wkmh = float(h.get("windspeedKmph", 0) or 0)
+            hourly_wind.append(wkmh * 0.539957)  # to knots
+            hourly_dir.append(float(h.get("winddirDegree", 0) or 0))
+            gkmh = float(h.get("WindGustKmph", h.get("windspeedKmph", 0)) or 0)
+            hourly_gust.append(gkmh * 0.539957)
+            hourly_code.append(_map_code(int(h.get("weatherCode", 0) or 0)))
+            cover = float(h.get("cloudcover", 0) or 0)
+            hourly_cloud.append(cover)
+            hourly_low.append(cover if cover < 40 else cover * 0.7)
+            hourly_mid.append(cover * 0.4)
+            hourly_high.append(cover * 0.2)
+            hourly_precip.append(float(h.get("precipMM", 0) or 0))
+            hourly_press.append(float(h.get("pressure", 1013) or 1013))
+            hourly_rh.append(float(h.get("humidity", 0) or 0))
+            hourly_vis.append(float(h.get("visibility", 10) or 10) * 1000)
+
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "current": {
+            "temperature_2m": float(current.get("temp_C", 0) or 0),
+            "wind_speed_10m": float(current.get("windspeedKmph", 0) or 0) * 0.539957,
+            "wind_direction_10m": float(current.get("winddirDegree", 0) or 0),
+            "wind_gusts_10m": float(current.get("WindGustKmph", current.get("windspeedKmph", 0)) or 0) * 0.539957,
+            "cloud_cover": float(current.get("cloudcover", 0) or 0),
+            "precipitation": float(current.get("precipMM", 0) or 0),
+            "weather_code": _map_code(int(current.get("weatherCode", 0) or 0)),
+            "relative_humidity_2m": float(current.get("humidity", 0) or 0),
+            "pressure_msl": float(current.get("pressure", 1013) or 1013),
+            "is_day": 1,
+        },
+        "current_units": {
+            "temperature_2m": "°C", "wind_speed_10m": "kn", "wind_direction_10m": "°",
+        },
+        "hourly": {
+            "time": hourly_times,
+            "temperature_2m": hourly_temp,
+            "wind_speed_10m": hourly_wind,
+            "wind_direction_10m": hourly_dir,
+            "wind_gusts_10m": hourly_gust,
+            "weather_code": hourly_code,
+            "cloud_cover": hourly_cloud,
+            "cloud_cover_low": hourly_low,
+            "cloud_cover_mid": hourly_mid,
+            "cloud_cover_high": hourly_high,
+            "precipitation": hourly_precip,
+            "visibility": hourly_vis,
+            "pressure_msl": hourly_press,
+            "relative_humidity_2m": hourly_rh,
+        },
+        "_provider": "wttr.in",
+    }
+
 @api_router.get("/weather/forecast")
 async def weather_forecast(lat: float, lon: float):
-    """Proxies Open-Meteo hourly forecast for aviation."""
+    """Proxies Open-Meteo hourly forecast with a 5-minute cache + stale fallback + wttr.in fallback."""
+    key = f"forecast:{round(lat, 2)}:{round(lon, 2)}"
+    cached = await _cache_get(key, FORECAST_CACHE_TTL_S)
+    if cached and cached["fresh"]:
+        return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": False}}
+
     hourly_vars = [
         "temperature_2m", "relative_humidity_2m", "dew_point_2m",
         "precipitation", "rain", "showers", "snowfall",
@@ -524,11 +668,28 @@ async def weather_forecast(lat: float, lon: float):
         "&wind_speed_unit=kn&temperature_unit=celsius"
         "&timezone=auto&forecast_days=2"
     )
-    async with httpx.AsyncClient(timeout=15.0) as http_client:
-        r = await http_client.get(url)
-        if r.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Weather provider error: {r.status_code}")
-        return r.json()
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0 (aviation weather)"})
+            if r.status_code == 200:
+                data = r.json()
+                data["_provider"] = "open-meteo"
+                await _cache_put(key, data)
+                return {**data, "_cache": {"hit": False, "age_s": 0, "stale": False}}
+            logger.warning("Open-Meteo returned %s for %s,%s", r.status_code, lat, lon)
+    except Exception as e:
+        logger.exception("Open-Meteo request failed: %s", e)
+
+    # Try fallback provider (wttr.in)
+    wttr = await _fetch_wttr_forecast(lat, lon)
+    if wttr:
+        await _cache_put(key, wttr)
+        return {**wttr, "_cache": {"hit": False, "age_s": 0, "stale": False}}
+
+    # Both providers failed — serve stale if we have any
+    if cached:
+        return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": True}}
+    raise HTTPException(status_code=503, detail="Weather provider is temporarily unavailable and no cached data exists for this location")
 
 # ---------- Favorites ----------
 @api_router.get("/favorites", response_model=List[FavoriteOut])
@@ -590,22 +751,38 @@ async def geocode(q: str = Query(..., min_length=1)):
 async def get_metar(icao: str = Query(..., min_length=3, max_length=4)):
     """Fetch latest METAR for an ICAO from aviationweather.gov (US NOAA)."""
     icao_up = icao.upper()
+    key = f"metar:{icao_up}"
+    cached = await _cache_get(key, METAR_CACHE_TTL_S)
+    if cached and cached["fresh"]:
+        return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": False}}
+
     url = f"https://aviationweather.gov/api/data/metar?ids={icao_up}&format=json&taf=false&hours=2"
-    async with httpx.AsyncClient(timeout=15.0) as http_client:
-        r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
-        if r.status_code == 204:
-            data = []
-        elif r.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"METAR provider error: {r.status_code}")
-        else:
-            try:
-                data = r.json()
-            except Exception:
-                data = []
-        if not data:
-            return {"icao": icao_up, "available": False, "raw": None, "observation_time": None}
-        m = data[0]
-        return {
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
+            if r.status_code == 204:
+                data_list = []
+            elif r.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"METAR provider error: {r.status_code}")
+            else:
+                try:
+                    data_list = r.json()
+                except Exception:
+                    data_list = []
+    except HTTPException:
+        if cached:
+            return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": True}}
+        raise
+    except Exception:
+        if cached:
+            return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": True}}
+        raise HTTPException(status_code=503, detail="METAR provider unavailable")
+
+    if not data_list:
+        result = {"icao": icao_up, "available": False, "raw": None, "observation_time": None}
+    else:
+        m = data_list[0]
+        result = {
             "icao": icao_up,
             "available": True,
             "raw": m.get("rawOb"),
@@ -620,27 +797,45 @@ async def get_metar(icao: str = Query(..., min_length=3, max_length=4)):
             "flight_category": m.get("fltCat"),
             "clouds": m.get("clouds"),
         }
+    await _cache_put(key, result)
+    return {**result, "_cache": {"hit": False, "age_s": 0, "stale": False}}
 
 @api_router.get("/aviation/taf")
 async def get_taf(icao: str = Query(..., min_length=3, max_length=4)):
     """Fetch latest TAF for an ICAO from aviationweather.gov (US NOAA)."""
     icao_up = icao.upper()
+    key = f"taf:{icao_up}"
+    cached = await _cache_get(key, TAF_CACHE_TTL_S)
+    if cached and cached["fresh"]:
+        return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": False}}
+
     url = f"https://aviationweather.gov/api/data/taf?ids={icao_up}&format=json"
-    async with httpx.AsyncClient(timeout=15.0) as http_client:
-        r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
-        if r.status_code == 204:
-            data = []
-        elif r.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"TAF provider error: {r.status_code}")
-        else:
-            try:
-                data = r.json()
-            except Exception:
-                data = []
-        if not data:
-            return {"icao": icao_up, "available": False, "raw": None}
-        t = data[0]
-        return {
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            r = await http_client.get(url, headers={"User-Agent": "PushpakWX/1.0"})
+            if r.status_code == 204:
+                data_list = []
+            elif r.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"TAF provider error: {r.status_code}")
+            else:
+                try:
+                    data_list = r.json()
+                except Exception:
+                    data_list = []
+    except HTTPException:
+        if cached:
+            return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": True}}
+        raise
+    except Exception:
+        if cached:
+            return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": True}}
+        raise HTTPException(status_code=503, detail="TAF provider unavailable")
+
+    if not data_list:
+        result = {"icao": icao_up, "available": False, "raw": None}
+    else:
+        t = data_list[0]
+        result = {
             "icao": icao_up,
             "available": True,
             "raw": t.get("rawTAF"),
@@ -648,6 +843,8 @@ async def get_taf(icao: str = Query(..., min_length=3, max_length=4)):
             "valid_from": t.get("validTimeFrom"),
             "valid_to": t.get("validTimeTo"),
         }
+    await _cache_put(key, result)
+    return {**result, "_cache": {"hit": False, "age_s": 0, "stale": False}}
 
 
 # ---------- Flights / Logbook ----------
