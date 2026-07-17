@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 6 (auto-detect flight): Backend 5/5 pass (Prefs.auto_detect_flight round-trip, missing-field default True, login regression). Frontend flows PASS — auto-detect toggle in Settings works, badge testID='auto-detect-badge' shows correct text ('AUTO-START ARMED · SPEED ≥ 30 KT FOR 15 S' when idle, 'AUTO-STOP ARMED · SPEED < 5 KT FOR 2 MIN' after START), badge hides when toggle OFF, and setting persists across reload. Two issues found: (1) ToggleRow styles (toggleRow/toggleLabel/toggleHint/toggleTrack/toggleThumb/*On) are referenced in settings.tsx but NEVER defined in the StyleSheet — the switch is functionally tappable but the visual track+thumb are invisible and label text has no color; (2) Runtime ReferenceError risk: inflight.tsx line 128 references undefined identifier `autoCountdownRef.current` in the else-branch that clears state when auto-detect gets disabled mid-session.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ToggleRow (Settings › FLIGHT RECORDING)", "issue": "Missing StyleSheet entries for toggleRow, toggleLabel, toggleHint, toggleTrack, toggleTrackOn, toggleThumb, toggleThumbOn in /app/frontend/app/(tabs)/settings.tsx. Toggle is tappable (state flips + persists), but there is NO visible switch track/thumb and label/hint have no color styling. Reference: settings.tsx:311-324 (component) vs styles StyleSheet (styles definition ends without these keys).", "testID": "auto-detect-flight-toggle", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings", "issues": ["FLIGHT RECORDING row lacks visible toggle indicator — user cannot tell current ON/OFF state visually, only by tapping and seeing badge change on InFlight tab."]}
+    ],
+    "react_native_issues": [
+      {"component": "inflight.tsx", "issue": "Undefined identifier `autoCountdownRef` used at line 128 (`} else if (autoCountdownRef.current != null) {`). No such ref declared — only state `autoCountdown` exists. Will throw ReferenceError at runtime when auto-detect toggle transitions to false while a countdown is active. Reference: /app/frontend/app/(tabs)/inflight.tsx:128"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_prefs_iter6.py", "/app/test_reports/pytest/iter6_prefs.xml"],
+  "action_items": [
+    "Add StyleSheet definitions in settings.tsx for toggleRow (flexDirection row, alignItems center, padding, gap), toggleLabel (color onSurface, fontSize 14, fontWeight 600), toggleHint (color onSurfaceSecondary, fontSize 11, marginTop 2, lineHeight 15), toggleTrack (width 44, height 26, borderRadius 13, backgroundColor surfaceTertiary, padding 2, justifyContent center), toggleTrackOn (backgroundColor brand), toggleThumb (width 22, height 22, borderRadius 11, backgroundColor onSurface), toggleThumbOn (alignSelf flex-end, backgroundColor '#000').",
+    "In inflight.tsx line 128, replace `autoCountdownRef.current != null` with `autoCountdown != null` (state) OR declare `const autoCountdownRef = useRef<...>(null)` and keep it in sync. This currently would only throw when user toggles OFF mid-flight, but is still latent.",
+    "(Optional) Consider using React Native's `<Switch>` component instead of the custom ToggleRow for platform-consistent behavior."
+  ],
+  "critical_code_review_comments": [
+    "settings.tsx ToggleRow uses styles.toggleRow etc. that don't exist in StyleSheet.create — silently renders unstyled (empty style objects). No console error because React Native permits undefined style props.",
+    "inflight.tsx `autoCountdownRef` is a typo/leftover; must be `autoCountdown` state or a real ref."
+  ],
+  "updated_files": ["/app/backend/tests/test_prefs_iter6.py"],
+  "success_rate": {"backend": "100%", "frontend": "80% (all requested badge/toggle logic works; toggle switch visual is broken)"},
+  "seed_data_creation": "Reused existing demo@test.com user; temporarily unset auto_detect_flight in prefs to verify default; PUT restored it back to True in cleanup.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend Prefs endpoints fully validated. On UI, focus retest on: (a) visual switch appears with correct ON/OFF state after StyleSheet fix, (b) InFlight tab handles rapid auto-detect toggle without runtime error (JS console clean). Login: demo@test.com/demopass123.",
+  "rca_of_issue": "ToggleRow bug — developer created new component + styles but forgot to add the style keys to StyleSheet.create at bottom of settings.tsx. `autoCountdownRef` bug — likely renamed from a ref pattern to state (setAutoCountdown) but missed one reference in the else-branch cleanup path."
+}

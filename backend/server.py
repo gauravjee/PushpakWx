@@ -114,6 +114,7 @@ class Prefs(BaseModel):
     wind_unit: str = "kt"  # kt | kmh | mph
     altitude_unit: str = "ft"  # ft | m
     temp_unit: str = "C"  # C | F
+    auto_detect_flight: bool = True
 
 class FlightSample(BaseModel):
     t: int  # ms epoch

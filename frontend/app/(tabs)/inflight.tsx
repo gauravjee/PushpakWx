@@ -38,6 +38,16 @@ export default function InFlight() {
   const hdgSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgRef = useRef<number>(0);
   const recordingRef = useRef(false);
+  // Auto-detect state
+  const fastSinceRef = useRef<number | null>(null); // ms when speed first crossed >= 30kt
+  const slowSinceRef = useRef<number | null>(null); // ms when speed first dropped < 5kt
+  const [autoCountdown, setAutoCountdown] = useState<{ kind: 'start' | 'stop'; secondsLeft: number } | null>(null);
+  const autoEnabledRef = useRef(prefs.auto_detect_flight ?? true);
+  useEffect(() => { autoEnabledRef.current = prefs.auto_detect_flight ?? true; }, [prefs.auto_detect_flight]);
+
+  // Refs to functions used inside the location callback closure
+  const startRecordingRef = useRef<() => void>(() => {});
+  const stopRecordingRef = useRef<() => void>(() => {});
 
   // Check current permission on mount
   useEffect(() => {
@@ -67,10 +77,62 @@ export default function InFlight() {
           (l) => {
             if (cancelled) return;
             setLoc(l);
-            if (!recordingRef.current) return;
             const altFt = l.coords.altitude != null ? l.coords.altitude * 3.281 : 0;
             const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
+
+            // ----- Auto-detect flight start/stop -----
+            const AUTO_START_KT = 30;
+            const AUTO_START_MS = 15 * 1000;   // 15 seconds sustained fast
+            const AUTO_STOP_KT = 5;
+            const AUTO_STOP_MS = 2 * 60 * 1000; // 2 minutes sustained slow
+
+            if (autoEnabledRef.current) {
+              if (!recordingRef.current) {
+                // Waiting to start: track sustained speed >= 30 kt
+                if (speedKt >= AUTO_START_KT) {
+                  if (fastSinceRef.current == null) fastSinceRef.current = now;
+                  const elapsed = now - fastSinceRef.current;
+                  const secondsLeft = Math.max(0, Math.ceil((AUTO_START_MS - elapsed) / 1000));
+                  setAutoCountdown({ kind: 'start', secondsLeft });
+                  if (elapsed >= AUTO_START_MS) {
+                    fastSinceRef.current = null;
+                    setAutoCountdown(null);
+                    startRecordingRef.current();
+                  }
+                } else {
+                  if (fastSinceRef.current != null) {
+                    fastSinceRef.current = null;
+                    setAutoCountdown(null);
+                  }
+                }
+              } else {
+                // Recording: track sustained speed < 5 kt
+                if (speedKt < AUTO_STOP_KT) {
+                  if (slowSinceRef.current == null) slowSinceRef.current = now;
+                  const elapsed = now - slowSinceRef.current;
+                  const secondsLeft = Math.max(0, Math.ceil((AUTO_STOP_MS - elapsed) / 1000));
+                  setAutoCountdown({ kind: 'stop', secondsLeft });
+                  if (elapsed >= AUTO_STOP_MS) {
+                    slowSinceRef.current = null;
+                    setAutoCountdown(null);
+                    stopRecordingRef.current();
+                  }
+                } else {
+                  if (slowSinceRef.current != null) {
+                    slowSinceRef.current = null;
+                    setAutoCountdown(null);
+                  }
+                }
+              }
+            } else if (autoCountdownRef.current != null) {
+              setAutoCountdown(null);
+              fastSinceRef.current = null;
+              slowSinceRef.current = null;
+            }
+            // -----------------------------------------
+
+            if (!recordingRef.current) return;
             setSamples(prev => {
               const currentHeading = hdgRef.current;
               const next = [...prev, {
@@ -114,12 +176,19 @@ export default function InFlight() {
     setRecordStartMs(Date.now());
     setRecording(true);
     recordingRef.current = true;
+    // Reset auto-detect timers
+    fastSinceRef.current = null;
+    slowSinceRef.current = null;
+    setAutoCountdown(null);
   };
 
   const stopRecording = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     setRecording(false);
     recordingRef.current = false;
+    fastSinceRef.current = null;
+    slowSinceRef.current = null;
+    setAutoCountdown(null);
     const captured = samples;
     const start = recordStartMs;
     const end = Date.now();
@@ -133,6 +202,10 @@ export default function InFlight() {
     setSaveNote('');
     setSaveModalVisible(true);
   };
+
+  // Keep refs pointing at the latest functions so the location callback can call them
+  useEffect(() => { startRecordingRef.current = startRecording; });
+  useEffect(() => { stopRecordingRef.current = stopRecording; });
 
   const discardFlight = () => {
     setSaveModalVisible(false);
@@ -300,6 +373,20 @@ export default function InFlight() {
               Recording · {formatElapsed(Date.now() - recordStartMs)} · {samples.length} samples
             </Text>
           )}
+          {(prefs.auto_detect_flight ?? true) && (
+            <View style={styles.autoArm} testID="auto-detect-badge">
+              <Ionicons name="flash-outline" size={11} color={colors.brand} />
+              <Text style={styles.autoArmText}>
+                {autoCountdown
+                  ? autoCountdown.kind === 'start'
+                    ? `AUTO-STARTING IN ${autoCountdown.secondsLeft}s`
+                    : `AUTO-STOPPING IN ${formatCountdown(autoCountdown.secondsLeft)}`
+                  : recording
+                    ? 'AUTO-STOP ARMED · SPEED < 5 KT FOR 2 MIN'
+                    : 'AUTO-START ARMED · SPEED ≥ 30 KT FOR 15 S'}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Compass */}
@@ -446,6 +533,12 @@ function formatElapsed(ms: number): string {
   if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m ${sec.toString().padStart(2, '0')}s`;
   if (m > 0) return `${m}m ${sec.toString().padStart(2, '0')}s`;
   return `${sec}s`;
+}
+
+function formatCountdown(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function BigMetric({
@@ -606,6 +699,15 @@ const styles = StyleSheet.create({
   recordStopInner: { width: 14, height: 14, backgroundColor: colors.error },
   recordStopText: { color: colors.error, fontSize: 14, fontWeight: '800', letterSpacing: 2 },
   recordElapsed: { color: colors.onSurfaceSecondary, fontSize: 11, letterSpacing: 1 },
+  autoArm: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.brand,
+    backgroundColor: colors.brandTertiary,
+    marginTop: 4,
+  },
+  autoArmText: { color: colors.brand, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
     alignItems: 'center', justifyContent: 'center', padding: spacing.xl,

@@ -124,6 +124,16 @@ export default function Settings() {
           />
         </Section>
 
+        <Section title="FLIGHT RECORDING">
+          <ToggleRow
+            testID="auto-detect-flight-toggle"
+            label="Auto-detect flight"
+            hint="Automatically START at ≥30 kt for 15s and STOP at <5 kt for 2 min."
+            value={prefs.auto_detect_flight ?? true}
+            onChange={(v) => setPref({ auto_detect_flight: v })}
+          />
+        </Section>
+
         <Section title="ABOUT">
           <InfoRow icon="cloud-outline" label="Weather data" value="Open-Meteo" />
           <InfoRow icon="information-circle-outline" label="Version" value="1.0.0" />
@@ -289,6 +299,28 @@ function InfoRow({ icon, label, value, multiLine }: { icon: string; label: strin
         <Text style={[styles.infoValue, multiLine && { fontSize: 12, lineHeight: 16 }]}>{value}</Text>
       </View>
     </View>
+  );
+}
+
+function ToggleRow({
+  label, hint, value, onChange, testID,
+}: {
+  label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; testID?: string;
+}) {
+  return (
+    <Pressable
+      testID={testID}
+      onPress={() => onChange(!value)}
+      style={styles.toggleRow}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        {hint ? <Text style={styles.toggleHint}>{hint}</Text> : null}
+      </View>
+      <View style={[styles.toggleTrack, value && styles.toggleTrackOn]}>
+        <View style={[styles.toggleThumb, value && styles.toggleThumbOn]} />
+      </View>
+    </Pressable>
   );
 }
 

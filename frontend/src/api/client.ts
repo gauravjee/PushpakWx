@@ -29,6 +29,7 @@ export type Prefs = {
   wind_unit: 'kt' | 'kmh' | 'mph';
   altitude_unit: 'ft' | 'm';
   temp_unit: 'C' | 'F';
+  auto_detect_flight: boolean;
 };
 
 async function request<T>(path: string, options: RequestInit = {}, auth = false): Promise<T> {
