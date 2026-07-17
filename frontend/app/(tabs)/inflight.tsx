@@ -684,7 +684,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.brand,
   },
   logbookBtnText: { color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
-  recordWrap: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm, alignItems: 'center', gap: 6 },
+  recordWrap: { paddingHorizontal: spacing.lg, marginBottom: spacing.lg, alignItems: 'center', gap: 8 },
   recordStartBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
     backgroundColor: colors.error, paddingVertical: 14, borderRadius: radius.pill,
@@ -703,13 +703,15 @@ const styles = StyleSheet.create({
   recordElapsed: { color: colors.onSurfaceSecondary, fontSize: 11, letterSpacing: 1 },
   autoArm: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    paddingHorizontal: spacing.md, paddingVertical: 5,
     borderRadius: radius.pill,
     borderWidth: 1, borderColor: colors.brand,
     backgroundColor: colors.brandTertiary,
-    marginTop: 4,
+    marginTop: 6,
+    alignSelf: 'center',
+    maxWidth: '100%',
   },
-  autoArmText: { color: colors.brand, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  autoArmText: { color: colors.brand, fontSize: 10, fontWeight: '800', letterSpacing: 1, flexShrink: 1 },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
     alignItems: 'center', justifyContent: 'center', padding: spacing.xl,

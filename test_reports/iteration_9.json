@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 9 frontend fixes validated on 390x844 mobile viewport. All 4 primary items PASS: (1) RUNWAY WIND card is fully within viewport (rwy-inc right edge=361 < 390). (2) Tab bar renders with all 5 tabs (WX/INFLIGHT/SEARCH/SAVED/SETUP) tappable; useSafeAreaInsets correctly wired in (tabs)/_layout.tsx. (3) auto-detect-badge no longer overlaps compass rose (badge bottom=135, compass top=163, 28px gap) and is positioned below START FLIGHT button (14px gap). (4) 'use-gps-button' present in dashboard header between location label and ROUTE button, is tappable. Regressions: dashboard loads with wttr.in fallback data, wind rose renders, hourly strip renders, ROUTE/fav buttons work.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      { "screen": "InFlight compass area", "issues": [
+        "Compass 'S' label overlaps the numeric heading readout '000°' underneath; the four compass ring labels (N/E/S/W) are clipped by the fixed 260x260 SVG frame and sit on top of the metric labels row (visible as 'A' overlapping ALTITUDE and 'N' near GROUND SPEED). Pre-existing, not part of iter9 fixes but worth flagging."
+      ] }
+    ],
+    "react_native_issues": [
+      { "component": "props.pointerEvents deprecation warning", "issue": "Browser console reports 'props.pointerEvents is deprecated. Use style.pointerEvents' during login screen render. Non-blocking, but should be migrated. Likely originates from a third-party or Pressable-related wrapper; search codebase for pointerEvents prop usage." }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "None required for iter9 fixes — all 4 items validated and passing.",
+    "Note (not iter9): The auto_detect_flight preference for demo@test.com was persisted as false from prior test runs, so the badge only appeared after re-enabling in SETUP. New users will see the badge by default (server default is true).",
+    "Follow-up polish (optional): Compass rose labels overlap the heading text and the metric labels immediately below on 390px width. Consider adding more vertical padding under CompassRose or shrinking size to 240 on narrow screens.",
+    "Follow-up polish (optional): Address 'props.pointerEvents is deprecated' console warning by migrating to style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "WindComponentCalc: title has flexShrink:1 and rwyRow flexShrink:0 with gap:6 — layout math balances at 390px width (verified: card width 358, rwy-inc ends at x=361).",
+    "(tabs)/_layout.tsx correctly imports and uses useSafeAreaInsets; height=60+insets.bottom, paddingBottom=8+insets.bottom.",
+    "inflight.tsx: recordWrap has marginBottom equivalent via spacing.lg — visually verified 28px gap between badge and compass.",
+    "dashboard.tsx: use-gps-button correctly calls Location.getForegroundPermissionsAsync then requestForegroundPermissionsAsync if not granted, then reloads via initGPS."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only run)", "frontend": "100% (4/4 primary items pass)" },
+  "seed_data_creation": "None. Used demo@test.com/demopass123 (existing account). Had to re-enable auto_detect_flight in SETUP because prior iterations left it disabled.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login demo@test.com/demopass123. If 'auto-detect-badge' does not render on InFlight, verify SETUP > auto-detect-flight toggle is ON — the demo user's persisted prefs may be false from earlier iterations. Grant geolocation via page.context.grant_permissions(['geolocation'], origin=...) and set_geolocation before tapping ENABLE LOCATION on InFlight tab, otherwise the inflight-screen won't render.",
+  "rca_of_issue": ""
+}

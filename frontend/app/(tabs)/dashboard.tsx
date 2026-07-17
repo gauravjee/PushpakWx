@@ -242,14 +242,34 @@ export default function Dashboard() {
             <Text style={styles.locLabel} numberOfLines={1}>{loc.label}</Text>
             <Text style={styles.locSub} numberOfLines={1}>{loc.sub || `${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}`}</Text>
           </View>
+          <Pressable
+            testID="use-gps-button"
+            onPress={async () => {
+              setLoading(true);
+              try {
+                let p = await Location.getForegroundPermissionsAsync();
+                if (p.status !== 'granted') {
+                  p = await Location.requestForegroundPermissionsAsync();
+                }
+                if (p.status === 'granted') {
+                  await initGPS();
+                }
+              } finally {
+                setLoading(false);
+              }
+            }}
+            style={styles.gpsBtn}
+          >
+            <Ionicons name="locate" size={18} color={colors.brand} />
+          </Pressable>
           <Pressable onPress={() => router.push('/route')} style={styles.routeBtn} testID="open-route-button">
-            <Ionicons name="map-outline" size={16} color={colors.brand} />
+            <Ionicons name="map-outline" size={14} color={colors.brand} />
             <Text style={styles.routeBtnText}>ROUTE</Text>
           </Pressable>
           <Pressable onPress={toggleFavorite} style={styles.favBtn} testID="fav-toggle-button">
             <Ionicons
               name={loc.isFavorite ? 'star' : 'star-outline'}
-              size={22}
+              size={20}
               color={loc.isFavorite ? colors.brand : colors.onSurfaceSecondary}
             />
           </Pressable>
@@ -411,23 +431,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  locLabel: { color: colors.onSurface, fontSize: 26, fontWeight: '800', letterSpacing: 1 },
+  locLabel: { color: colors.onSurface, fontSize: 24, fontWeight: '800', letterSpacing: 1 },
   locSub: { color: colors.onSurfaceSecondary, fontSize: 12, marginTop: 2 },
-  favBtn: { padding: spacing.sm, backgroundColor: colors.surfaceSecondary, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  favBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceSecondary, borderRadius: 19, borderWidth: 1, borderColor: colors.border },
+  gpsBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceSecondary, borderRadius: 19, borderWidth: 1, borderColor: colors.border },
   routeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
+    gap: 4,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 8,
     backgroundColor: colors.brandTertiary,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.brand,
   },
-  routeBtnText: { color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
+  routeBtnText: { color: colors.brand, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   condCard: {
     marginHorizontal: spacing.lg,
     backgroundColor: colors.surfaceSecondary,
