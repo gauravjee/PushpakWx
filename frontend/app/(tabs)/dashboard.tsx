@@ -73,9 +73,11 @@ export default function Dashboard() {
 
   const initGPS = useCallback(async () => {
     try {
-      // Only use GPS if permission has ALREADY been granted (don't prompt on WX tab).
-      // Permission is requested contextually inside the InFlight tab.
-      const p = await Location.getForegroundPermissionsAsync();
+      // Ask for location permission on first load so the dashboard can show local weather.
+      let p = await Location.getForegroundPermissionsAsync();
+      if (p.status !== 'granted') {
+        p = await Location.requestForegroundPermissionsAsync();
+      }
       if (p.status !== 'granted') {
         await loadForLocation({ label: 'KJFK', sub: 'John F Kennedy Intl · New York', lat: 40.6413, lon: -73.7781, icao: 'KJFK', elevation_ft: 13 });
         return;
