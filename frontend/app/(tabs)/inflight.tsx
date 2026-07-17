@@ -42,6 +42,8 @@ export default function InFlight() {
   const fastSinceRef = useRef<number | null>(null); // ms when speed first crossed >= 30kt
   const slowSinceRef = useRef<number | null>(null); // ms when speed first dropped < 5kt
   const [autoCountdown, setAutoCountdown] = useState<{ kind: 'start' | 'stop'; secondsLeft: number } | null>(null);
+  const autoCountdownRef = useRef<{ kind: 'start' | 'stop'; secondsLeft: number } | null>(null);
+  useEffect(() => { autoCountdownRef.current = autoCountdown; }, [autoCountdown]);
   const autoEnabledRef = useRef(prefs.auto_detect_flight ?? true);
   useEffect(() => { autoEnabledRef.current = prefs.auto_detect_flight ?? true; }, [prefs.auto_detect_flight]);
 

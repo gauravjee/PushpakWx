@@ -424,6 +424,21 @@ const styles = StyleSheet.create({
   modalBtnCancelText: { color: colors.onSurface, fontWeight: '700', letterSpacing: 1, fontSize: 13 },
   modalBtnDanger: { backgroundColor: colors.error },
   modalBtnDangerText: { color: '#fff', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
+  toggleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    padding: spacing.md,
+  },
+  toggleLabel: { color: colors.onSurface, fontSize: 14, fontWeight: '600' },
+  toggleHint: { color: colors.onSurfaceSecondary, fontSize: 11, marginTop: 2, lineHeight: 15 },
+  toggleTrack: {
+    width: 44, height: 26, borderRadius: 13,
+    backgroundColor: colors.surfaceTertiary,
+    borderWidth: 1, borderColor: colors.border,
+    justifyContent: 'center', padding: 2,
+  },
+  toggleTrackOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.onSurfaceSecondary },
+  toggleThumbOn: { backgroundColor: '#000', transform: [{ translateX: 18 }] },
   modalBtnPrimary: { backgroundColor: colors.brand },
   modalBtnPrimaryText: { color: '#000', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
 });
