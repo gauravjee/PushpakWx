@@ -39,13 +39,22 @@ A React Native (Expo) mobile app for pilots providing hourly weather forecasts, 
 - Per-waypoint METAR-now badge (if ICAO)
 - Route summary: total distance, flight time, worst-case flight category along the route
 
-### InFlight tab (NEW)
+### InFlight tab
 - Live GPS altitude, magnetic heading, ground speed, GPS accuracy
 - **Large digital compass rose** (heading-up display, rotating dial)
-- **5-minute track log** with altitude + speed bar sparklines
-- Climb rate (fpm)
+- **START/STOP flight recording** — tap START before takeoff, STOP after landing → auto-saves to Logbook
+- **Flight track map** (SVG polyline of your path, up to 2h buffer)
+- Track log with altitude + speed sparklines, climb rate (fpm)
 - Position coordinates
-- Proper permission handling: pre-permission explainer → request → denied fallback with "Open Settings"
+- **LOGBOOK button** in header → opens persistent flight logbook
+
+### Logbook (/logbook)
+- Persistent list of all recorded flights (server-side MongoDB storage per user)
+- Each card: DEP → ARR ICAOs, date, distance, duration, max altitude
+- **Flight detail** (/logbook/{id}): full flight track on map, stats (distance/duration/max-alt/avg-speed/max-speed/samples), optional pilot note
+- **Export CSV** — full sample log with headers `timestamp_iso,lat,lon,alt_ft,speed_kt,heading_deg` for spreadsheets & FAA logbook workflows
+- **Export GeoJSON** — FeatureCollection with LineString (lon, lat, alt-m) for mapping apps (QGIS, Google Earth, Leaflet)
+- Delete individual flights (with confirmation)
 
 ### Search
 - ICAO/IATA airport search (46 seeded airports globally)
@@ -65,9 +74,17 @@ Weather:
 - `GET /api/aviation/taf?icao=` — aviationweather.gov TAF
 - `GET /api/airports/search?q=`, `GET /api/geocode?q=`
 
+Flights / Logbook:
+- `POST /api/flights` — save a recorded flight (server computes stats + nearest-airport lookup)
+- `GET /api/flights` — list summaries for current user
+- `GET /api/flights/{id}` — detail with samples
+- `DELETE /api/flights/{id}`
+- `GET /api/flights/{id}/export?format=csv|geojson`
+
 Data: `/api/favorites`, `/api/prefs`
 
 ## MongoDB Collections
 - `users` (id, email, hashed_password, full_name, created_at, email_verified)
 - `otps` (email, purpose[verify|reset], code, expires_at, created_at, attempts)
 - `airports`, `favorites`, `prefs`
+- `flights` (id, user_id, started_at, ended_at, dep_icao/name/lat/lon, arr_icao/name/lat/lon, distance_nm, duration_s, max_alt_ft, avg_speed_kt, max_speed_kt, note, samples[])
