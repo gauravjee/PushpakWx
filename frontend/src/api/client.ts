@@ -52,6 +52,40 @@ async function request<T>(path: string, options: RequestInit = {}, auth = false)
   return res.json();
 }
 
+export type FlightSample = {
+  t: number;
+  lat: number;
+  lon: number;
+  alt_ft?: number | null;
+  speed_kt?: number | null;
+  heading?: number | null;
+};
+
+export type FlightSummary = {
+  id: string;
+  created_at: string;
+  started_at: string;
+  ended_at: string;
+  note?: string | null;
+  dep_icao?: string | null;
+  dep_name?: string | null;
+  dep_lat: number;
+  dep_lon: number;
+  arr_icao?: string | null;
+  arr_name?: string | null;
+  arr_lat: number;
+  arr_lon: number;
+  distance_nm: number;
+  max_alt_ft: number;
+  avg_speed_kt: number;
+  max_speed_kt: number;
+  duration_s: number;
+};
+
+export type FlightDetail = FlightSummary & {
+  samples: FlightSample[];
+};
+
 export const api = {
   register: (email: string, password: string, full_name?: string) =>
     request<{ message: string; email: string; requires_verification: boolean }>('/auth/register', {
@@ -130,4 +164,14 @@ export const api = {
       valid_from?: number | null;
       valid_to?: number | null;
     }>(`/aviation/taf?icao=${encodeURIComponent(icao)}`),
+  createFlight: (payload: { started_at: string; ended_at: string; samples: FlightSample[]; note?: string }) =>
+    request<FlightDetail>('/flights', { method: 'POST', body: JSON.stringify(payload) }, true),
+  listFlights: () => request<FlightSummary[]>('/flights', {}, true),
+  getFlight: (id: string) => request<FlightDetail>(`/flights/${id}`, {}, true),
+  deleteFlight: (id: string) =>
+    request<{ ok: boolean }>(`/flights/${id}`, { method: 'DELETE' }, true),
+  exportFlight: (id: string, format: 'csv' | 'geojson') =>
+    request<{ filename: string; content_type: string; content: string }>(
+      `/flights/${id}/export?format=${format}`, {}, true,
+    ),
 };

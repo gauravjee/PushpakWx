@@ -115,6 +115,20 @@ class Prefs(BaseModel):
     altitude_unit: str = "ft"  # ft | m
     temp_unit: str = "C"  # C | F
 
+class FlightSample(BaseModel):
+    t: int  # ms epoch
+    lat: float
+    lon: float
+    alt_ft: Optional[float] = None
+    speed_kt: Optional[float] = None
+    heading: Optional[float] = None
+
+class FlightCreate(BaseModel):
+    started_at: str  # ISO
+    ended_at: str  # ISO
+    samples: List[FlightSample]
+    note: Optional[str] = None
+
 # ============= AUTH HELPERS =============
 
 def hash_password(pw: str) -> str:
@@ -633,6 +647,173 @@ async def get_taf(icao: str = Query(..., min_length=3, max_length=4)):
             "valid_from": t.get("validTimeFrom"),
             "valid_to": t.get("validTimeTo"),
         }
+
+
+# ---------- Flights / Logbook ----------
+import math
+
+def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 3440.065  # nautical miles
+    to_rad = lambda d: d * math.pi / 180.0
+    dlat = to_rad(lat2 - lat1)
+    dlon = to_rad(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(to_rad(lat1)) * math.cos(to_rad(lat2)) * math.sin(dlon / 2) ** 2
+    return 2 * R * math.asin(min(1.0, math.sqrt(a)))
+
+async def _nearest_airport(lat: float, lon: float, max_nm: float = 10.0) -> Optional[dict]:
+    """Find the nearest seeded airport within max_nm nautical miles."""
+    # Rough bbox filter: 1 degree lat ~ 60 nm
+    delta = max_nm / 60.0 + 0.05
+    cursor = db.airports.find(
+        {
+            "lat": {"$gte": lat - delta, "$lte": lat + delta},
+            "lon": {"$gte": lon - delta, "$lte": lon + delta},
+        },
+        {"_id": 0},
+    )
+    best = None
+    best_dist = max_nm
+    async for ap in cursor:
+        d = _haversine_nm(lat, lon, ap["lat"], ap["lon"])
+        if d < best_dist:
+            best_dist = d
+            best = {**ap, "distance_nm": round(d, 2)}
+    return best
+
+def _compute_flight_stats(samples: List[dict]) -> dict:
+    if not samples:
+        return {
+            "distance_nm": 0.0, "max_alt_ft": 0.0, "avg_speed_kt": 0.0,
+            "max_speed_kt": 0.0, "duration_s": 0,
+        }
+    total_nm = 0.0
+    prev = None
+    max_alt = 0.0
+    max_speed = 0.0
+    speed_sum = 0.0
+    speed_count = 0
+    for s in samples:
+        if prev is not None:
+            total_nm += _haversine_nm(prev["lat"], prev["lon"], s["lat"], s["lon"])
+        if s.get("alt_ft") is not None and s["alt_ft"] > max_alt:
+            max_alt = s["alt_ft"]
+        if s.get("speed_kt") is not None:
+            if s["speed_kt"] > max_speed:
+                max_speed = s["speed_kt"]
+            speed_sum += s["speed_kt"]
+            speed_count += 1
+        prev = s
+    duration_s = max(0, int((samples[-1]["t"] - samples[0]["t"]) / 1000))
+    return {
+        "distance_nm": round(total_nm, 2),
+        "max_alt_ft": round(max_alt, 0),
+        "avg_speed_kt": round(speed_sum / speed_count, 1) if speed_count else 0.0,
+        "max_speed_kt": round(max_speed, 1),
+        "duration_s": duration_s,
+    }
+
+@api_router.post("/flights")
+async def create_flight(payload: FlightCreate, user: dict = Depends(get_current_user)):
+    if not payload.samples or len(payload.samples) < 2:
+        raise HTTPException(status_code=400, detail="Not enough samples to save a flight")
+    samples = [s.dict() for s in payload.samples]
+    stats = _compute_flight_stats(samples)
+    dep = await _nearest_airport(samples[0]["lat"], samples[0]["lon"])
+    arr = await _nearest_airport(samples[-1]["lat"], samples[-1]["lon"])
+    flight_id = str(uuid.uuid4())
+    doc = {
+        "id": flight_id,
+        "user_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": payload.started_at,
+        "ended_at": payload.ended_at,
+        "note": payload.note,
+        "samples": samples,
+        "dep_icao": (dep or {}).get("icao"),
+        "dep_name": (dep or {}).get("name"),
+        "dep_lat": samples[0]["lat"],
+        "dep_lon": samples[0]["lon"],
+        "arr_icao": (arr or {}).get("icao"),
+        "arr_name": (arr or {}).get("name"),
+        "arr_lat": samples[-1]["lat"],
+        "arr_lon": samples[-1]["lon"],
+        **stats,
+    }
+    await db.flights.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/flights")
+async def list_flights(user: dict = Depends(get_current_user)):
+    cursor = db.flights.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "user_id": 0, "samples": 0},
+    ).sort("started_at", -1)
+    return await cursor.to_list(500)
+
+@api_router.get("/flights/{flight_id}")
+async def get_flight(flight_id: str, user: dict = Depends(get_current_user)):
+    f = await db.flights.find_one(
+        {"id": flight_id, "user_id": user["id"]},
+        {"_id": 0, "user_id": 0},
+    )
+    if not f:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    return f
+
+@api_router.delete("/flights/{flight_id}")
+async def delete_flight(flight_id: str, user: dict = Depends(get_current_user)):
+    res = await db.flights.delete_one({"id": flight_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    return {"ok": True}
+
+@api_router.get("/flights/{flight_id}/export")
+async def export_flight(
+    flight_id: str,
+    format: str = Query("csv", regex="^(csv|geojson)$"),
+    user: dict = Depends(get_current_user),
+):
+    f = await db.flights.find_one(
+        {"id": flight_id, "user_id": user["id"]},
+        {"_id": 0, "user_id": 0},
+    )
+    if not f:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    if format == "csv":
+        lines = ["timestamp_iso,lat,lon,alt_ft,speed_kt,heading_deg"]
+        for s in f["samples"]:
+            iso = datetime.fromtimestamp(s["t"] / 1000, tz=timezone.utc).isoformat()
+            lines.append(
+                f"{iso},{s['lat']},{s['lon']},"
+                f"{s.get('alt_ft', '') or ''},"
+                f"{s.get('speed_kt', '') or ''},"
+                f"{s.get('heading', '') or ''}"
+            )
+        return {"filename": f"flight-{flight_id[:8]}.csv", "content_type": "text/csv", "content": "\n".join(lines)}
+    else:  # geojson
+        coords = [[s["lon"], s["lat"], (s.get("alt_ft") or 0) * 0.3048] for s in f["samples"]]
+        geo = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": f["id"],
+                        "started_at": f["started_at"],
+                        "ended_at": f["ended_at"],
+                        "dep_icao": f.get("dep_icao"),
+                        "arr_icao": f.get("arr_icao"),
+                        "distance_nm": f.get("distance_nm"),
+                        "max_alt_ft": f.get("max_alt_ft"),
+                        "duration_s": f.get("duration_s"),
+                    },
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                }
+            ],
+        }
+        import json as _json
+        return {"filename": f"flight-{flight_id[:8]}.geojson", "content_type": "application/geo+json", "content": _json.dumps(geo)}
 
 
 app.include_router(api_router)

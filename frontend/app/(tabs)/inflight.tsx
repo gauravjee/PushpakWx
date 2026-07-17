@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform, Modal, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { colors, spacing, radius } from '@/src/theme';
 import { CompassRose } from '@/src/components/CompassRose';
 import { FlightTrackMap, TrackSample } from '@/src/components/FlightTrackMap';
 import { usePrefs } from '@/src/context/PrefsContext';
+import { api } from '@/src/api/client';
 import { convertWind, convertAlt, windUnitLabel, altUnitLabel } from '@/src/utils/weather';
 
 type Sample = TrackSample;
@@ -17,14 +20,24 @@ const TRACK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 export default function InFlight() {
   const { prefs } = usePrefs();
+  const router = useRouter();
   const [permStatus, setPermStatus] = useState<'undetermined' | 'granted' | 'denied' | 'checking'>('checking');
   const [canAskAgain, setCanAskAgain] = useState(true);
   const [loc, setLoc] = useState<Location.LocationObject | null>(null);
   const [heading, setHeading] = useState<number>(0);
   const [samples, setSamples] = useState<Sample[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [recordStartMs, setRecordStartMs] = useState<number | null>(null);
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [saveNote, setSaveNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [pendingSamples, setPendingSamples] = useState<Sample[]>([]);
+  const [pendingStart, setPendingStart] = useState<number | null>(null);
+  const [pendingEnd, setPendingEnd] = useState<number | null>(null);
   const locSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgRef = useRef<number>(0);
+  const recordingRef = useRef(false);
 
   // Check current permission on mount
   useEffect(() => {
@@ -54,6 +67,7 @@ export default function InFlight() {
           (l) => {
             if (cancelled) return;
             setLoc(l);
+            if (!recordingRef.current) return;
             const altFt = l.coords.altitude != null ? l.coords.altitude * 3.281 : 0;
             const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
@@ -93,6 +107,70 @@ export default function InFlight() {
       hdgSubRef.current = null;
     };
   }, [permStatus]);
+
+  const startRecording = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setSamples([]);
+    setRecordStartMs(Date.now());
+    setRecording(true);
+    recordingRef.current = true;
+  };
+
+  const stopRecording = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    setRecording(false);
+    recordingRef.current = false;
+    const captured = samples;
+    const start = recordStartMs;
+    const end = Date.now();
+    if (captured.length < 2 || !start) {
+      Alert.alert('Flight too short', 'Not enough samples were captured to save this flight.');
+      return;
+    }
+    setPendingSamples(captured);
+    setPendingStart(start);
+    setPendingEnd(end);
+    setSaveNote('');
+    setSaveModalVisible(true);
+  };
+
+  const discardFlight = () => {
+    setSaveModalVisible(false);
+    setPendingSamples([]);
+    setPendingStart(null);
+    setPendingEnd(null);
+  };
+
+  const saveFlight = async () => {
+    if (!pendingStart || !pendingEnd || pendingSamples.length < 2) return;
+    setSaving(true);
+    try {
+      await api.createFlight({
+        started_at: new Date(pendingStart).toISOString(),
+        ended_at: new Date(pendingEnd).toISOString(),
+        note: saveNote.trim() || undefined,
+        samples: pendingSamples.map(s => ({
+          t: s.t,
+          lat: s.lat,
+          lon: s.lon,
+          alt_ft: s.altFt,
+          speed_kt: s.speedKt,
+          heading: s.heading ?? null,
+        })),
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setSaveModalVisible(false);
+      setPendingSamples([]);
+      setPendingStart(null);
+      setPendingEnd(null);
+      // Navigate to logbook to show the newly saved flight
+      router.push('/logbook');
+    } catch (e: any) {
+      Alert.alert('Save failed', e.message || 'Could not save flight');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const requestPermission = async () => {
     const p = await Location.requestForegroundPermissionsAsync();
@@ -177,7 +255,51 @@ export default function InFlight() {
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxl }}>
         <View style={styles.header}>
           <Text style={styles.title}>INFLIGHT</Text>
-          <View style={styles.liveDot} />
+          {recording ? (
+            <View style={styles.recDot}>
+              <View style={[styles.dotInner, { backgroundColor: colors.error }]} />
+              <Text style={styles.recText}>REC</Text>
+            </View>
+          ) : (
+            <View style={styles.liveDot} />
+          )}
+          <View style={{ flex: 1 }} />
+          <Pressable
+            testID="open-logbook-button"
+            onPress={() => router.push('/logbook')}
+            style={styles.logbookBtn}
+          >
+            <Ionicons name="book-outline" size={14} color={colors.brand} />
+            <Text style={styles.logbookBtnText}>LOGBOOK</Text>
+          </Pressable>
+        </View>
+
+        {/* Record button */}
+        <View style={styles.recordWrap}>
+          {!recording ? (
+            <Pressable
+              testID="start-flight-button"
+              onPress={startRecording}
+              style={({ pressed }) => [styles.recordStartBtn, pressed && { opacity: 0.85 }]}
+            >
+              <View style={styles.recordStartInner} />
+              <Text style={styles.recordStartText}>START FLIGHT</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              testID="stop-flight-button"
+              onPress={stopRecording}
+              style={({ pressed }) => [styles.recordStopBtn, pressed && { opacity: 0.85 }]}
+            >
+              <View style={styles.recordStopInner} />
+              <Text style={styles.recordStopText}>STOP & SAVE FLIGHT</Text>
+            </Pressable>
+          )}
+          {recording && recordStartMs != null && (
+            <Text style={styles.recordElapsed}>
+              Recording · {formatElapsed(Date.now() - recordStartMs)} · {samples.length} samples
+            </Text>
+          )}
         </View>
 
         {/* Compass */}
@@ -256,8 +378,74 @@ export default function InFlight() {
           Not for primary flight navigation. Use certified avionics.
         </Text>
       </ScrollView>
+
+      {/* Save flight modal */}
+      <Modal
+        visible={saveModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={discardFlight}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard} testID="save-flight-modal">
+            <View style={styles.modalIcon}>
+              <Ionicons name="airplane" size={30} color={colors.brand} />
+            </View>
+            <Text style={styles.modalTitle}>Save this flight?</Text>
+            {pendingStart != null && pendingEnd != null ? (
+              <View style={styles.modalStats}>
+                <View style={styles.modalStat}>
+                  <Text style={styles.modalStatLabel}>DURATION</Text>
+                  <Text style={styles.modalStatValue}>{formatElapsed(pendingEnd - pendingStart)}</Text>
+                </View>
+                <View style={styles.modalStat}>
+                  <Text style={styles.modalStatLabel}>SAMPLES</Text>
+                  <Text style={styles.modalStatValue}>{pendingSamples.length}</Text>
+                </View>
+              </View>
+            ) : null}
+            <Text style={styles.modalLabel}>Note (optional)</Text>
+            <TextInput
+              testID="save-flight-note-input"
+              value={saveNote}
+              onChangeText={setSaveNote}
+              placeholder="e.g. Solo XC to KHPN"
+              placeholderTextColor={colors.onSurfaceTertiary}
+              style={styles.modalInput}
+            />
+            <View style={styles.modalBtnRow}>
+              <Pressable
+                testID="discard-flight-button"
+                onPress={discardFlight}
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                disabled={saving}
+              >
+                <Text style={styles.modalBtnCancelText}>DISCARD</Text>
+              </Pressable>
+              <Pressable
+                testID="confirm-save-flight-button"
+                onPress={saveFlight}
+                style={[styles.modalBtn, styles.modalBtnPrimary, saving && { opacity: 0.7 }]}
+                disabled={saving}
+              >
+                {saving ? <ActivityIndicator color="#000" /> : <Text style={styles.modalBtnPrimaryText}>SAVE</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
+}
+
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m ${sec.toString().padStart(2, '0')}s`;
+  if (m > 0) return `${m}m ${sec.toString().padStart(2, '0')}s`;
+  return `${sec}s`;
 }
 
 function BigMetric({
@@ -391,6 +579,64 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.onSurface, fontSize: 26, fontWeight: '800', letterSpacing: 2 },
   liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.success },
+  recDot: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: 'rgba(255,69,58,0.15)', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.error },
+  dotInner: { width: 8, height: 8, borderRadius: 4 },
+  recText: { color: colors.error, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  logbookBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: spacing.md, paddingVertical: 8,
+    backgroundColor: colors.brandTertiary, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.brand,
+  },
+  logbookBtnText: { color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
+  recordWrap: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm, alignItems: 'center', gap: 6 },
+  recordStartBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: colors.error, paddingVertical: 14, borderRadius: radius.pill,
+    paddingHorizontal: spacing.xl, alignSelf: 'stretch',
+  },
+  recordStartInner: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff' },
+  recordStartText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 2 },
+  recordStopBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: colors.surfaceSecondary, paddingVertical: 14, borderRadius: radius.pill,
+    paddingHorizontal: spacing.xl, alignSelf: 'stretch',
+    borderWidth: 2, borderColor: colors.error,
+  },
+  recordStopInner: { width: 14, height: 14, backgroundColor: colors.error },
+  recordStopText: { color: colors.error, fontSize: 14, fontWeight: '800', letterSpacing: 2 },
+  recordElapsed: { color: colors.onSurfaceSecondary, fontSize: 11, letterSpacing: 1 },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center', justifyContent: 'center', padding: spacing.xl,
+  },
+  modalCard: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg, padding: spacing.xl,
+    width: '100%', maxWidth: 400,
+    borderWidth: 1, borderColor: colors.border, gap: spacing.md,
+  },
+  modalIcon: {
+    alignSelf: 'center', width: 60, height: 60, borderRadius: 30,
+    backgroundColor: colors.brandTertiary, alignItems: 'center', justifyContent: 'center',
+  },
+  modalTitle: { color: colors.onSurface, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  modalStats: { flexDirection: 'row', gap: spacing.sm },
+  modalStat: { flex: 1, backgroundColor: colors.surfaceTertiary, padding: spacing.md, borderRadius: radius.md, alignItems: 'center', gap: 2 },
+  modalStatLabel: { color: colors.onSurfaceTertiary, fontSize: 10, letterSpacing: 1.5, fontWeight: '700' },
+  modalStatValue: { color: colors.onSurface, fontSize: 15, fontWeight: '700' },
+  modalLabel: { color: colors.onSurfaceSecondary, fontSize: 12, marginTop: spacing.sm },
+  modalInput: {
+    backgroundColor: colors.surfaceTertiary, color: colors.onSurface,
+    borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 12,
+    borderWidth: 1, borderColor: colors.border, fontSize: 14,
+  },
+  modalBtnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  modalBtn: { flex: 1, padding: 14, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  modalBtnCancel: { backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
+  modalBtnCancelText: { color: colors.onSurface, fontWeight: '700', letterSpacing: 1, fontSize: 13 },
+  modalBtnPrimary: { backgroundColor: colors.brand },
+  modalBtnPrimaryText: { color: '#000', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
   permWrap: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, gap: spacing.md, alignItems: 'center' },
   permIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.brandTertiary, alignItems: 'center', justifyContent: 'center' },
   permTitle: { color: colors.onSurface, fontSize: 22, fontWeight: '800', letterSpacing: 1 },

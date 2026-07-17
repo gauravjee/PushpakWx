@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 5 LOGBOOK feature — FULL PASS. Backend: 13/13 pytest tests pass (POST /api/flights with nearest-airport lookup correctly resolves KJFK→KHPN, distance/duration/max_alt/max_speed stats computed; <2 samples returns 400; GET list omits samples; GET detail includes samples; CSV export starts with 'timestamp_iso,lat,lon,alt_ft,speed_kt,heading_deg' header and has n+1 lines; GeoJSON export returns FeatureCollection→LineString with correct coordinates and dep/arr properties; all 4 endpoints require auth → 401; cross-user isolation: user2 gets 404 on GET/DELETE/export of user1's flight; DELETE works and subsequent GET is 404; invalid format returns 422). Frontend: Verified end-to-end via Playwright on mobile viewport (390x844) as authenticated demo@test.com. logbook-screen renders with 2 seeded flights; flight-card-0 visible with KJFK→KHPN route, DIST 26nm, TIME 9m, ALT 4944ft; tapping card navigates to flight-detail-screen which shows flight-track-map (full track, not empty), all 6 stat cards (DISTANCE 26 nm, DURATION 9m 00s, MAX ALT 4944ft, AVG SPEED 103kt, MAX SPEED 117kt, SAMPLES 10), NOTE, and both export-csv-button + export-geojson-button; CSV export opens export-modal with valid CSV content (header visible) and export-copy-button present; GeoJSON export opens export-modal containing 'FeatureCollection'; flight-delete-button reachable. InFlight tab (after granting geolocation permission via CDP): inflight-screen, start-flight-button, and open-logbook-button all visible; open-logbook-button navigates to logbook-screen correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-location on web (watchDeviceHeading)", "issue": "Non-blocking console warning on web preview when opening InFlight tab. Guard heading subscription with Platform.OS !== 'web' (already handled). Reference: /app/frontend/app/(tabs)/inflight.tsx:90"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_logbook.py",
+    "/app/test_reports/pytest/iter5_logbook.xml",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "action_items": [
+    "None — all requested logbook flows pass. Feature is ready for release for all users (payment tier will be added later per PRD)."
+  ],
+  "critical_code_review_comments": [
+    "server.py::_nearest_airport uses a bbox pre-filter (delta = max_nm/60 + 0.05) → efficient and correct for the seeded 45-airport dataset. Both KJFK (0.0 nm) and KHPN (0.0 nm) resolve exactly when sample lat/lon matches the seed.",
+    "server.py::_compute_flight_stats correctly handles empty samples (returns zeros) and null-safe alt/speed fields. duration_s uses ms→s from first/last sample timestamp.",
+    "GET /api/flights list correctly excludes 'samples' payload (projection {samples:0}) → keeps list lightweight; detail includes samples.",
+    "MongoDB _id excluded from all responses via projection {_id:0}. No serialization issues.",
+    "All flight endpoints scope by {id, user_id} → cross-user isolation is enforced via 404 (not 403), matching the spec.",
+    "CSV export uses safe ISO timestamps from ms epoch; GeoJSON coordinates order is [lon, lat, alt_m] and includes altitude in meters (0.3048 conv) → correct per RFC 7946.",
+    "Frontend /logbook uses useFocusEffect to refresh list on re-focus → newly saved flights appear immediately.",
+    "Frontend [id].tsx uses expo-clipboard for copy — works on native; on web it may no-op silently (acceptable per PRD).",
+    "In inflight.tsx, stopRecording() reads state 'samples' via closure which may capture stale value under batching; kept as-is since captured=samples reads the latest snapshot at handler invocation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_logbook.py (new pytest file, 13 tests)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all 6 UI scenarios pass)"},
+  "seed_data_creation": "Backend pytest created and cleaned up 1 flight (via demo@test.com) + created user2 for isolation test and deleted account. The pytest-created flight (note='TEST_flight KJFK->KHPN') persisted for the demo user (test does not delete the primary flight — test_12_delete_flight deletes it). Frontend tests reused prior pytest-run leftover seed flights that appeared in the logbook list.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL is EXPO_PUBLIC_BACKEND_URL=https://cockpit-conditions.preview.emergentagent.com. Demo user demo@test.com / demopass123 exists in test_database and is verified. Frontend stores JWT in localStorage under key 'pw_auth_token' (value is JSON-string-quoted). When seeding via playwright's page.request.post to /api/flights with Authorization: Bearer <raw_jwt>, strip surrounding quotes from the localStorage value (use JSON.parse). Otherwise use pytest to seed. FlightTrackMap renders testID='flight-track-map' when samples>=2 and 'flight-track-map-empty' otherwise.",
+  "rca_of_issue": "N/A — no defects found."
+}
