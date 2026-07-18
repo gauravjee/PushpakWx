@@ -170,6 +170,37 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[dict]:
+    """Best-effort auth: returns the user if a valid token is present, otherwise None. Never raises."""
+    if credentials is None:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        return await db.users.find_one({"id": user_id}, {"_id": 0})
+    except jwt.InvalidTokenError:
+        return None
+
+async def get_current_admin(user: dict = Depends(get_current_user)) -> dict:
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+async def log_event(event_type: str, user_id: Optional[str] = None, meta: Optional[dict] = None):
+    """Best-effort usage event logging — never blocks or fails the request it's called from."""
+    try:
+        await db.events.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": event_type,
+            "user_id": user_id,
+            "meta": meta or {},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        logging.getLogger(__name__).warning("Failed to log event: %s", event_type)
+
 # ============= EMAIL / OTP HELPERS =============
 
 def generate_otp() -> str:
@@ -367,10 +398,13 @@ async def register(request: Request, payload: UserCreate):
         "hashed_password": hash_password(payload.password),
         "created_at": created_at,
         "email_verified": False,
+        "is_admin": False,
+        "last_login": None,
     }
     await db.users.insert_one(user_doc)
     await db.prefs.insert_one({"user_id": user_id, **Prefs().dict()})
     await create_and_send_otp(email_low, "verify", payload.full_name)
+    await log_event("register", user_id=user_id)
     return {"message": "Verification code sent", "email": email_low, "requires_verification": True}
 
 @api_router.post("/auth/verify-email", response_model=Token)
@@ -421,6 +455,8 @@ async def login(request: Request, payload: UserLogin):
             detail="Email not verified. A new code has been sent to your email.",
         )
     token = create_access_token(user["id"], user["email"])
+    await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}})
+    await log_event("login", user_id=user["id"])
     return Token(
         access_token=token,
         user=UserPublic(id=user["id"], email=user["email"], full_name=user.get("full_name"), created_at=user["created_at"], email_verified=True),
@@ -642,13 +678,13 @@ async def _fetch_wttr_forecast(lat: float, lon: float) -> Optional[dict]:
     }
 
 @api_router.get("/weather/forecast")
-async def weather_forecast(lat: float, lon: float):
+async def weather_forecast(lat: float, lon: float, user: Optional[dict] = Depends(get_optional_user)):
     """Proxies Open-Meteo hourly forecast with a 5-minute cache + stale fallback + wttr.in fallback."""
     key = f"forecast:{round(lat, 2)}:{round(lon, 2)}"
     cached = await _cache_get(key, FORECAST_CACHE_TTL_S)
+    await log_event("weather_forecast", user_id=user["id"] if user else None, meta={"lat": round(lat, 2), "lon": round(lon, 2)})
     if cached and cached["fresh"]:
         return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": False}}
-
     hourly_vars = [
         "temperature_2m", "relative_humidity_2m", "dew_point_2m",
         "precipitation", "rain", "showers", "snowfall",
@@ -749,14 +785,14 @@ async def geocode(q: str = Query(..., min_length=1)):
 
 # ---------- METAR / TAF (aviationweather.gov) ----------
 @api_router.get("/aviation/metar")
-async def get_metar(icao: str = Query(..., min_length=3, max_length=4)):
+async def get_metar(icao: str = Query(..., min_length=3, max_length=4), user: Optional[dict] = Depends(get_optional_user)):
     """Fetch latest METAR for an ICAO from aviationweather.gov (US NOAA)."""
     icao_up = icao.upper()
     key = f"metar:{icao_up}"
     cached = await _cache_get(key, METAR_CACHE_TTL_S)
+    await log_event("metar", user_id=user["id"] if user else None, meta={"icao": icao_up})
     if cached and cached["fresh"]:
         return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": False}}
-
     url = f"https://aviationweather.gov/api/data/metar?ids={icao_up}&format=json&taf=false&hours=2"
     try:
         async with httpx.AsyncClient(timeout=15.0) as http_client:
@@ -802,14 +838,14 @@ async def get_metar(icao: str = Query(..., min_length=3, max_length=4)):
     return {**result, "_cache": {"hit": False, "age_s": 0, "stale": False}}
 
 @api_router.get("/aviation/taf")
-async def get_taf(icao: str = Query(..., min_length=3, max_length=4)):
+async def get_taf(icao: str = Query(..., min_length=3, max_length=4), user: Optional[dict] = Depends(get_optional_user)):
     """Fetch latest TAF for an ICAO from aviationweather.gov (US NOAA)."""
     icao_up = icao.upper()
     key = f"taf:{icao_up}"
     cached = await _cache_get(key, TAF_CACHE_TTL_S)
+    await log_event("taf", user_id=user["id"] if user else None, meta={"icao": icao_up})
     if cached and cached["fresh"]:
         return {**cached["data"], "_cache": {"hit": True, "age_s": cached["age_s"], "stale": False}}
-
     url = f"https://aviationweather.gov/api/data/taf?ids={icao_up}&format=json"
     try:
         async with httpx.AsyncClient(timeout=15.0) as http_client:
@@ -1013,6 +1049,98 @@ async def export_flight(
         }
         import json as _json
         return {"filename": f"flight-{flight_id[:8]}.geojson", "content_type": "application/geo+json", "content": _json.dumps(geo)}
+
+
+
+# ---------- Admin ----------
+@api_router.get("/admin/overview")
+async def admin_overview(admin: dict = Depends(get_current_admin)):
+    from collections import Counter
+
+    total_users = await db.users.count_documents({})
+    verified_users = await db.users.count_documents({"email_verified": True})
+
+    now = datetime.now(timezone.utc)
+    cutoff_30d = now - timedelta(days=30)
+    cutoff_7d = now - timedelta(days=7)
+
+    users_cursor = db.users.find({}, {"_id": 0, "created_at": 1})
+    all_users = await users_cursor.to_list(100000)
+
+    def parse(ts):
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    daily_counts = Counter()
+    signups_7d = 0
+    signups_30d = 0
+    for u in all_users:
+        dt = parse(u.get("created_at", ""))
+        if not dt:
+            continue
+        if dt >= cutoff_30d:
+            daily_counts[dt.strftime("%Y-%m-%d")] += 1
+            signups_30d += 1
+        if dt >= cutoff_7d:
+            signups_7d += 1
+
+    daily_signups = [{"date": (cutoff_30d + timedelta(days=i)).strftime("%Y-%m-%d"),
+                       "count": daily_counts.get((cutoff_30d + timedelta(days=i)).strftime("%Y-%m-%d"), 0)}
+                      for i in range(31)]
+
+    events_cursor = db.events.find({"created_at": {"$gte": cutoff_30d.isoformat()}}, {"_id": 0})
+    events = await events_cursor.to_list(100000)
+
+    event_counts = Counter(e["type"] for e in events)
+    icao_counter = Counter(e["meta"]["icao"] for e in events if e.get("type") in ("metar", "taf") and e.get("meta", {}).get("icao"))
+    logins_7d = sum(1 for e in events if e["type"] == "login" and parse(e["created_at"]) and parse(e["created_at"]) >= cutoff_7d)
+
+    return {
+        "total_users": total_users,
+        "verified_users": verified_users,
+        "signups_last_7d": signups_7d,
+        "signups_last_30d": signups_30d,
+        "logins_last_7d": logins_7d,
+        "daily_signups": daily_signups,
+        "event_counts_30d": dict(event_counts),
+        "top_airports_30d": [{"icao": k, "count": v} for k, v in icao_counter.most_common(10)],
+    }
+
+@api_router.get("/admin/users")
+async def admin_users(
+    admin: dict = Depends(get_current_admin),
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
+    q: Optional[str] = None,
+):
+    query = {}
+    if q:
+        query = {"$or": [
+            {"email": {"$regex": q, "$options": "i"}},
+            {"full_name": {"$regex": q, "$options": "i"}},
+        ]}
+    total = await db.users.count_documents(query)
+    cursor = (
+        db.users.find(query, {"_id": 0, "hashed_password": 0})
+        .sort("created_at", -1)
+        .skip((page - 1) * limit)
+        .limit(limit)
+    )
+    items = await cursor.to_list(limit)
+    return {"items": items, "total": total, "page": page, "limit": limit}
+
+@api_router.get("/admin/activity")
+async def admin_activity(admin: dict = Depends(get_current_admin), limit: int = Query(50, ge=1, le=200)):
+    cursor = db.events.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    events = await cursor.to_list(limit)
+    user_ids = list({e["user_id"] for e in events if e.get("user_id")})
+    users = await db.users.find({"id": {"$in": user_ids}}, {"_id": 0, "id": 1, "email": 1}).to_list(len(user_ids) or 1)
+    email_by_id = {u["id"]: u["email"] for u in users}
+    for e in events:
+        e["user_email"] = email_by_id.get(e.get("user_id"))
+    return {"items": events}
 
 
 app.include_router(api_router)
