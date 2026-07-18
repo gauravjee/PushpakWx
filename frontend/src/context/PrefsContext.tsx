@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { api, Prefs } from '@/src/api/client';
 import { useAuth } from './AuthContext';
 
-const DEFAULT_PREFS: Prefs = { wind_unit: 'kt', altitude_unit: 'ft', temp_unit: 'C', auto_detect_flight: true };
+const DEFAULT_PREFS: Prefs = { wind_unit: 'kt', altitude_unit: 'ft', temp_unit: 'C', auto_detect_flight: true, theme_mode: 'dark' };
 
 type PrefsState = {
   prefs: Prefs;

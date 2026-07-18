@@ -134,6 +134,26 @@ export default function Settings() {
           />
         </Section>
 
+        <Section title="APPEARANCE">
+          <SegRow
+            label="Theme"
+            options={[
+              { key: 'dark', label: 'Dark' },
+              { key: 'light', label: 'Light' },
+              { key: 'auto', label: 'Auto' },
+            ]}
+            value={prefs.theme_mode ?? 'dark'}
+            onChange={(v) => setPref({ theme_mode: v })}
+            testID="theme-mode"
+          />
+          <View style={styles.betaNote}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.info} />
+            <Text style={styles.betaText}>
+              Dark mode is the primary theme built for cockpit readability. Light &amp; Auto (system) rollout is in progress — your preference is saved and will apply as more screens are converted.
+            </Text>
+          </View>
+        </Section>
+
         <Section title="ABOUT">
           <InfoRow icon="cloud-outline" label="Weather data" value="Open-Meteo" />
           <InfoRow icon="information-circle-outline" label="Version" value="1.0.0" />
@@ -439,6 +459,12 @@ const styles = StyleSheet.create({
   toggleTrackOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.onSurfaceSecondary },
   toggleThumbOn: { backgroundColor: '#000', transform: [{ translateX: 18 }] },
+  betaNote: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    padding: spacing.md, backgroundColor: colors.surfaceTertiary,
+    borderTopWidth: 1, borderTopColor: colors.divider,
+  },
+  betaText: { color: colors.onSurfaceSecondary, fontSize: 11, lineHeight: 16, flex: 1 },
   modalBtnPrimary: { backgroundColor: colors.brand },
   modalBtnPrimaryText: { color: '#000', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
 });

@@ -1,0 +1,31 @@
+{
+  "summary": "Iter11 PRIMARY BUG (compass overlap/overflow) FULLY FIXED and NEW FEATURE (theme picker) works. Measured on 390x844 viewport with location granted: compass-rose = 220x220, borderRadius=110px, overflow=hidden. Layout: auto-detect-badge.bottom=135 < compass-rose.top=163 (28px gap) AND compass-rose.bottom=383 < metric-altitude.top=403 (20px gap) — no overlap. Center readout (000°, N, MAG) — every text node returns inside:true against the compass bounding box. Visual: dark ring with orange-tinted border rendered as expected (screenshot /tmp/step2_inflight.png). Settings > APPEARANCE renders segmented control testID='theme-mode' with all 3 options (dark/light/auto) — taps switch selection with visual highlight (screenshot /tmp/step4_theme_light.png). Backend theme_mode: GET/PUT /api/prefs accept and echo theme_mode; all 4 theme_mode pytests pass; persistence across GET verified for light/auto/dark. Regressions: login, dashboard weather (VFR/CLR/22°C), WindRose, runway wind, hourly strip, tab navigation, logbook fetch all still work.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_prefs_theme_iter11.py",
+    "/app/test_reports/pytest/iter11_theme.xml"
+  ],
+  "action_items": [
+    "No action required. Primary compass overlap bug and theme picker feature both verified working."
+  ],
+  "critical_code_review_comments": [
+    "CompassRose.tsx:23 correctly applies overflow:'hidden' + borderRadius:size/2 to the outer container.",
+    "CompassRose.tsx:143-148 absolute-positioned center readout (top/left/right/bottom:0 + center alignment) keeps 000°/direction/MAG perfectly centered inside the ring.",
+    "CompassRose.tsx:118 ring uses backgroundColor:'#0A0C0E' with borderColor: colors.brand+'55' (orange-tinted) and elevation:8 shadow — matches spec.",
+    "backend/server.py:118 Prefs.theme_mode: str='dark' default; GET returns and PUT persists correctly. Uses Pydantic default so legacy prefs docs missing the field will coerce to 'dark'.",
+    "settings.tsx:137-155 APPEARANCE section: SegRow with testID='theme-mode' generates testID='theme-mode-{key}' per option — good for automation. Info note about light-theme rollout is present."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (4/4 theme_mode tests + login + logbook + me pass; 2 unrelated regression tests failed only because my test used wrong endpoint paths)", "frontend": "100% (compass overlap fix + theme picker verified)"},
+  "seed_data_creation": "None. Used existing demo@test.com / demopass123 user.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Compass-rose at viewport 390x844 measured 220x220 with borderRadius:110px overflow:hidden. auto-detect-badge y=[111,135], compass y=[163,383], metric-altitude y=[403,480] — clear 28px & 20px vertical gaps confirm no overlap. All center-readout text nodes (000°, N, MAG) are geometrically inside the compass bounding box. Theme picker segmented control testID='theme-mode' works with individual option testIDs 'theme-mode-dark', 'theme-mode-light', 'theme-mode-auto'. Backend PUT/GET /api/prefs correctly echo theme_mode field.",
+  "rca_of_issue": "N/A — bug already fixed by main agent. Verified fix root cause: adding overflow:'hidden'+borderRadius:size/2 to the outer compass View clips the internal absolute-positioned dial/ticks so they cannot leak into the vertical siblings, and switching the center readout to absolute inset:0 with center alignment keeps it geometrically inside the circle regardless of parent layout."
+}

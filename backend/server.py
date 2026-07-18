@@ -115,6 +115,7 @@ class Prefs(BaseModel):
     altitude_unit: str = "ft"  # ft | m
     temp_unit: str = "C"  # C | F
     auto_detect_flight: bool = True
+    theme_mode: str = "dark"  # dark | light | auto
 
 class FlightSample(BaseModel):
     t: int  # ms epoch
