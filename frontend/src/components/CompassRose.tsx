@@ -20,7 +20,7 @@ export function CompassRose({ heading, size = 260 }: { heading: number; size?: n
   ];
 
   return (
-    <View testID="compass-rose" style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+    <View testID="compass-rose" style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: size / 2 }}>
       {/* Outer ring */}
       <View style={[styles.ring, { width: size, height: size, borderRadius: size / 2 }]} />
       {/* Rotating dial */}
@@ -102,7 +102,7 @@ export function CompassRose({ heading, size = 260 }: { heading: number; size?: n
       <View style={[styles.topMarker, { top: half - inner / 2 - 4 }]} />
 
       {/* Center readout */}
-      <View style={styles.center} pointerEvents="none">
+      <View style={[styles.center, { pointerEvents: 'none' }]}>
         <Text style={styles.heading}>{Math.round(heading).toString().padStart(3, '0')}°</Text>
         <Text style={styles.dir}>{windDirLabel(heading)}</Text>
         <Text style={styles.mag}>MAG</Text>
@@ -114,8 +114,13 @@ export function CompassRose({ heading, size = 260 }: { heading: number; size?: n
 const styles = StyleSheet.create({
   ring: {
     borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceSecondary,
+    borderColor: colors.brand + '55',
+    backgroundColor: '#0A0C0E',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 8,
   },
   cardinal: {
     position: 'absolute',
@@ -136,10 +141,12 @@ const styles = StyleSheet.create({
     borderTopColor: colors.brand,
   },
   center: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heading: { color: colors.onSurface, fontSize: 44, fontWeight: '800', letterSpacing: 2 },
-  dir: { color: colors.onSurfaceSecondary, fontSize: 16, fontWeight: '700', marginTop: 2 },
+  heading: { color: colors.onSurface, fontSize: 40, fontWeight: '800', letterSpacing: 2 },
+  dir: { color: colors.onSurfaceSecondary, fontSize: 14, fontWeight: '700', marginTop: 2 },
   mag: { color: colors.onSurfaceTertiary, fontSize: 10, letterSpacing: 2, marginTop: 2 },
 });

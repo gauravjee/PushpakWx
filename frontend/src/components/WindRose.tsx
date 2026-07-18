@@ -61,7 +61,6 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Prop
       })}
       {/* Direction arrow (points FROM wind coming from — i.e., barb points to origin direction) */}
       <View
-        pointerEvents="none"
         style={{
           position: 'absolute',
           width: 4,
@@ -69,23 +68,24 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Prop
           backgroundColor: colors.brand,
           borderRadius: 4,
           transform: [{ rotate: `${direction}deg` }],
+          pointerEvents: 'none',
         }}
       />
       {/* Arrow head at N-side of stick, so rotate group */}
       <View
-        pointerEvents="none"
         style={{
           position: 'absolute',
           transform: [{ rotate: `${direction}deg` }],
           alignItems: 'center',
           justifyContent: 'flex-start',
           height: inner - 40,
+          pointerEvents: 'none',
         }}
       >
         <View style={styles.arrowHead} />
       </View>
       {/* Center readout */}
-      <View style={styles.center} pointerEvents="none">
+      <View style={[styles.center, { pointerEvents: 'none' }]}>
         <Text style={styles.speed}>{Math.round(speed)}</Text>
         <Text style={styles.unit}>{unitLabel}</Text>
         <Text style={styles.dir}>{windDirLabel(direction)} · {Math.round(direction)}°</Text>

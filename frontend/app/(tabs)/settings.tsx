@@ -124,6 +124,36 @@ export default function Settings() {
           />
         </Section>
 
+        <Section title="FLIGHT RECORDING">
+          <ToggleRow
+            testID="auto-detect-flight-toggle"
+            label="Auto-detect flight"
+            hint="Automatically START at ≥30 kt for 15s and STOP at <5 kt for 2 min."
+            value={prefs.auto_detect_flight ?? true}
+            onChange={(v) => setPref({ auto_detect_flight: v })}
+          />
+        </Section>
+
+        <Section title="APPEARANCE">
+          <SegRow
+            label="Theme"
+            options={[
+              { key: 'dark', label: 'Dark' },
+              { key: 'light', label: 'Light' },
+              { key: 'auto', label: 'Auto' },
+            ]}
+            value={prefs.theme_mode ?? 'dark'}
+            onChange={(v) => setPref({ theme_mode: v })}
+            testID="theme-mode"
+          />
+          <View style={styles.betaNote}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.info} />
+            <Text style={styles.betaText}>
+              Dark mode is the primary theme built for cockpit readability. Light &amp; Auto (system) rollout is in progress — your preference is saved and will apply as more screens are converted.
+            </Text>
+          </View>
+        </Section>
+
         <Section title="ABOUT">
           <InfoRow icon="cloud-outline" label="Weather data" value="Open-Meteo" />
           <InfoRow icon="information-circle-outline" label="Version" value="1.0.0" />
@@ -292,6 +322,28 @@ function InfoRow({ icon, label, value, multiLine }: { icon: string; label: strin
   );
 }
 
+function ToggleRow({
+  label, hint, value, onChange, testID,
+}: {
+  label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; testID?: string;
+}) {
+  return (
+    <Pressable
+      testID={testID}
+      onPress={() => onChange(!value)}
+      style={styles.toggleRow}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        {hint ? <Text style={styles.toggleHint}>{hint}</Text> : null}
+      </View>
+      <View style={[styles.toggleTrack, value && styles.toggleTrackOn]}>
+        <View style={[styles.toggleThumb, value && styles.toggleThumbOn]} />
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md },
@@ -392,6 +444,27 @@ const styles = StyleSheet.create({
   modalBtnCancelText: { color: colors.onSurface, fontWeight: '700', letterSpacing: 1, fontSize: 13 },
   modalBtnDanger: { backgroundColor: colors.error },
   modalBtnDangerText: { color: '#fff', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
+  toggleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    padding: spacing.md,
+  },
+  toggleLabel: { color: colors.onSurface, fontSize: 14, fontWeight: '600' },
+  toggleHint: { color: colors.onSurfaceSecondary, fontSize: 11, marginTop: 2, lineHeight: 15 },
+  toggleTrack: {
+    width: 44, height: 26, borderRadius: 13,
+    backgroundColor: colors.surfaceTertiary,
+    borderWidth: 1, borderColor: colors.border,
+    justifyContent: 'center', padding: 2,
+  },
+  toggleTrackOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.onSurfaceSecondary },
+  toggleThumbOn: { backgroundColor: '#000', transform: [{ translateX: 18 }] },
+  betaNote: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    padding: spacing.md, backgroundColor: colors.surfaceTertiary,
+    borderTopWidth: 1, borderTopColor: colors.divider,
+  },
+  betaText: { color: colors.onSurfaceSecondary, fontSize: 11, lineHeight: 16, flex: 1 },
   modalBtnPrimary: { backgroundColor: colors.brand },
   modalBtnPrimaryText: { color: '#000', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
 });
