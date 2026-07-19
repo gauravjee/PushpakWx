@@ -47,6 +47,8 @@ export default function InFlight() {
   const hdgRef = useRef<number>(0);
   const [webCompassNeedsPermission, setWebCompassNeedsPermission] = useState(false);
   const [webCompassUnavailable, setWebCompassUnavailable] = useState(false);
+  const [headingAccuracy, setHeadingAccuracy] = useState<number | null>(null);
+  const [calibrationDismissed, setCalibrationDismissed] = useState(false);
   const webOrientationHandlerRef = useRef<((e: any) => void) | null>(null);
   const webOrientationEventNameRef = useRef<string>('deviceorientation');
   const recordingRef = useRef(false);
@@ -245,6 +247,10 @@ export default function InFlight() {
               setHeading(val);
               hdgRef.current = val;
             }
+            setHeadingAccuracy(h.accuracy);
+            // Reappear next time calibration drops, even if dismissed before —
+            // don't let a stale dismissal hide a genuinely new problem.
+            if (h.accuracy >= 2) setCalibrationDismissed(false);
           });
         }
       } catch {
@@ -494,6 +500,19 @@ export default function InFlight() {
             >
               <Ionicons name="compass-outline" size={14} color={colors.brand} />
               <Text style={styles.enableCompassText}>ENABLE COMPASS</Text>
+            </Pressable>
+          )}
+          {Platform.OS !== 'web' && headingAccuracy != null && headingAccuracy <= 1 && !calibrationDismissed && (
+            <Pressable
+              testID="calibration-banner"
+              onPress={() => setCalibrationDismissed(true)}
+              style={styles.calibrationBanner}
+            >
+              <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
+              <Text style={styles.calibrationText}>
+                COMPASS NEEDS CALIBRATION · MOVE PHONE IN A FIGURE-8
+              </Text>
+              <Ionicons name="close" size={14} color={colors.onSurfaceTertiary} />
             </Pressable>
           )}
         </View>
@@ -790,6 +809,20 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     borderColor: colors.brand,
   },
   enableCompassText: { color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  calibrationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    backgroundColor: colors.warning + '18',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.warning + '55',
+    maxWidth: '92%',
+  },
+  calibrationText: { color: colors.warning, fontSize: 10, fontWeight: '800', letterSpacing: 0.5, flexShrink: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm,
