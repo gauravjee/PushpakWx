@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Svg, { Polygon } from 'react-native-svg';
 import { spacing, ColorPalette } from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { windDirLabel } from '@/src/utils/weather';
@@ -24,6 +25,8 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 240 }: Prop
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inner = size - 30;
+  const arrowW = Math.max(18, inner * 0.13);
+  const arrowH = Math.max(26, inner * 0.22);
 
   const cardinals = [
     { label: 'N', angle: 0, color: colors.brand },
@@ -95,21 +98,35 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 240 }: Prop
         })}
       </View>
 
-      {/* Direction arrow — this is the part that rotates. Kept short and
-          confined to the outer ring (like an RMI needle) so it never
-          overlaps the digital readout sitting in the center hub. */}
+      {/* Direction arrow — this is the part that rotates. A two-tone
+          navigation-arrow shape (SVG, so it renders identically on web
+          and the Android app), kept confined to the outer ring so it
+          never overlaps the digital readout sitting in the center hub. */}
       <View
         style={{
           position: 'absolute',
           width: inner,
           height: inner,
-          alignItems: 'center',
           transform: [{ rotate: `${direction}deg` }],
           pointerEvents: 'none',
         }}
       >
-        <View style={[styles.arrowShaft, { height: Math.max(20, inner / 2 - 14 - 58) }]} />
-        <View style={styles.arrowHead} />
+        <Svg
+          width={arrowW}
+          height={arrowH}
+          viewBox={`0 0 ${arrowW} ${arrowH}`}
+          style={{ position: 'absolute', top: 14, left: inner / 2 - arrowW / 2 }}
+        >
+          <Polygon
+            points={`${arrowW / 2},0 ${arrowW / 2},${arrowH * 0.72} 0,${arrowH}`}
+            fill={colors.brand}
+            fillOpacity={0.6}
+          />
+          <Polygon
+            points={`${arrowW / 2},0 ${arrowW},${arrowH} ${arrowW / 2},${arrowH * 0.72}`}
+            fill={colors.brand}
+          />
+        </Svg>
       </View>
 
       {/* Center readout (stays upright, doesn't rotate) */}
@@ -142,24 +159,6 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     textAlign: 'center',
     fontWeight: '800',
     fontSize: 16,
-  },
-  arrowShaft: {
-    width: 4,
-    backgroundColor: colors.brand,
-    borderRadius: 4,
-    marginTop: 14,
-  },
-  arrowHead: {
-    position: 'absolute',
-    top: 0,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderBottomWidth: 14,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: colors.brand,
   },
   center: {
     position: 'absolute',
