@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Modal, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { spacing, radius, ColorPalette} from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
@@ -165,7 +166,7 @@ export default function Settings() {
 
         <Section title="ABOUT">
           <InfoRow icon="cloud-outline" label="Weather data" value="Open-Meteo" />
-          <InfoRow icon="information-circle-outline" label="Version" value="1.0.0" />
+          <InfoRow icon="information-circle-outline" label="Version" value={Constants.expoConfig?.version ?? '—'} />
           <InfoRow
             icon="warning-outline"
             label="Disclaimer"
