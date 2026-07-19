@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing } from '@/src/theme';
+import { radius, spacing, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import {
   convertWind,
   convertTemp,
@@ -24,7 +25,9 @@ type Props = {
   prefs: UserPrefs;
 };
 
-export function HourlyStrip({ hours, prefs }: Props) {
+export function HourlyStrip({ hours, prefs }: Props) {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <ScrollView
       horizontal
@@ -75,7 +78,7 @@ export function HourlyStrip({ hours, prefs }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   card: {
     width: 78,
     backgroundColor: colors.surfaceSecondary,

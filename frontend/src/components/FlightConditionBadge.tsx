@@ -1,9 +1,13 @@
+import { useMemo } from 'react';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FlightCategory, categoryColor } from '@/src/utils/weather';
-import { colors, radius, spacing } from '@/src/theme';
+import { radius, spacing, ColorPalette} from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 
 export function FlightConditionBadge({ category, size = 'md' }: { category: FlightCategory; size?: 'sm' | 'md' | 'lg' }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const color = categoryColor(category);
   const s = size === 'lg' ? styles.lg : size === 'sm' ? styles.sm : styles.md;
   const t = size === 'lg' ? 20 : size === 'sm' ? 11 : 14;
@@ -17,8 +21,7 @@ export function FlightConditionBadge({ category, size = 'md' }: { category: Flig
     </View>
   );
 }
-
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',

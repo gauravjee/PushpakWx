@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { convertWind, windUnitLabel } from '@/src/utils/weather';
 
 type Props = {
@@ -16,7 +17,9 @@ type Props = {
  * User enters a runway designator (e.g. "27" -> 270°) or an arbitrary heading.
  * Computes headwind/tailwind + crosswind components.
  */
-export function WindComponentCalc({ windDirDeg, windSpeedKt, gustKt, unit }: Props) {
+export function WindComponentCalc({ windDirDeg, windSpeedKt, gustKt, unit }: Props) {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [rwyText, setRwyText] = useState('27');
 
   const rwyHeading = useMemo(() => {
@@ -137,6 +140,8 @@ function Component({
   icon: string;
   testID?: string;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const converted = convertWind(value, unit);
   const convertedGust = gust != null ? convertWind(gust, unit) : null;
   return (
@@ -156,7 +161,7 @@ function Component({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   card: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.md,

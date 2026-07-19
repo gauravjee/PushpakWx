@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Polyline, Circle, Line as SvgLine, Text as SvgText } from 'react-native-svg';
-import { colors, radius, spacing } from '@/src/theme';
+import { radius, spacing, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { windDirLabel } from '@/src/utils/weather';
 
 export type TrackSample = {
@@ -25,7 +26,9 @@ type Props = {
  * - Renders start marker (green), waypoints (dots), current position (orange arrow)
  * - Grid overlay for orientation
  */
-export function FlightTrackMap({ samples, height = 260 }: Props) {
+export function FlightTrackMap({ samples, height = 260 }: Props) {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const valid = samples.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
   if (valid.length < 2) {
     return (
@@ -140,7 +143,7 @@ function formatDuration(ms: number): string {
   return `${sec}s`;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   mapWrap: {
     marginHorizontal: spacing.lg,
     backgroundColor: colors.surfaceSecondary,

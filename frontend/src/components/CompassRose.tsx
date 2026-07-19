@@ -1,13 +1,16 @@
-import React from 'react';
+import { ColorPalette } from '@/src/theme';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { windDirLabel } from '@/src/utils/weather';
 
 /**
  * Big digital compass rose. The dial rotates so the current heading
  * is under the fixed top marker (heading-up style).
  */
-export function CompassRose({ heading, size = 260 }: { heading: number; size?: number }) {
+export function CompassRose({ heading, size = 260 }: { heading: number; size?: number }) {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const half = size / 2;
   const inner = size - 30;
 
@@ -111,7 +114,7 @@ export function CompassRose({ heading, size = 260 }: { heading: number; size?: n
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   ring: {
     borderWidth: 2,
     borderColor: colors.brand + '55',

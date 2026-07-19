@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing } from '@/src/theme';
+import { spacing, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { windDirLabel } from '@/src/utils/weather';
 
 type Props = {
@@ -11,7 +12,9 @@ type Props = {
   size?: number;
 };
 
-export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Props) {
+export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Props) {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const half = size / 2;
   const outer = size;
   const inner = size - 24;
@@ -97,7 +100,7 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Prop
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   ring: {
     borderWidth: 2,
     borderColor: colors.border,
