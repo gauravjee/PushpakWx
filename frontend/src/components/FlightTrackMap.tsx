@@ -20,6 +20,7 @@ export type TrackSample = {
 type Props = {
   samples: TrackSample[];
   height?: number;
+  isRecording?: boolean;
 };
 
 const MIN_ZOOM = 4;
@@ -36,7 +37,7 @@ const MAX_ZOOM = 15;
  * left blank; the flight path and grid still render on top regardless,
  * so a lost connection never breaks the view, just the map imagery.
  */
-export function FlightTrackMap({ samples, height = 260 }: Props) {
+export function FlightTrackMap({ samples, height = 260, isRecording }: Props) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [zoomOverride, setZoomOverride] = useState<number | null>(null);
@@ -46,7 +47,11 @@ export function FlightTrackMap({ samples, height = 260 }: Props) {
     return (
       <View style={[styles.emptyBox, { height }]} testID="flight-track-map-empty">
         <Text style={styles.emptyText}>
-          {valid.length === 0 ? 'Waiting for GPS fix…' : 'Move to build track…'}
+          {isRecording === false
+            ? 'Tap Start Flight to begin tracking'
+            : valid.length === 0
+              ? 'Waiting for GPS fix…'
+              : 'Move to build track…'}
         </Text>
       </View>
     );

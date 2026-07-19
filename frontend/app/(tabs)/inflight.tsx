@@ -446,7 +446,7 @@ export default function InFlight() {
             <Text style={styles.sectionTitle}>FLIGHT TRACK · UP TO 2H</Text>
             <Text style={styles.sectionSub}>{samples.length}/{TRACK_MAX_SAMPLES}</Text>
           </View>
-          <FlightTrackMap samples={samples} height={240} />
+          <FlightTrackMap samples={samples} height={240} isRecording={recording} />
         </View>
 
         {/* Track log */}
