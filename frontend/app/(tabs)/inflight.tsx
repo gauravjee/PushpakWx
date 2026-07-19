@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo} from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform, Modal, TextInput, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette} from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { CompassRose } from '@/src/components/CompassRose';
 import { FlightTrackMap, TrackSample } from '@/src/components/FlightTrackMap';
 import { usePrefs } from '@/src/context/PrefsContext';
@@ -19,6 +20,8 @@ const TRACK_MAX_SAMPLES = 7200;
 const TRACK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 export default function InFlight() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { prefs } = usePrefs();
   const router = useRouter();
   const { width: winWidth } = useWindowDimensions();
@@ -550,6 +553,8 @@ function BigMetric({
 }: {
   icon: string; label: string; value: string; unit: string; hint?: string; accent?: string; testID?: string;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.metricCard} testID={testID}>
       <View style={styles.metricHead}>
@@ -566,6 +571,8 @@ function BigMetric({
 }
 
 function TrackLog({ samples, prefs }: { samples: Sample[]; prefs: any }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   if (samples.length < 2) {
     return (
       <View style={styles.trackEmpty}>
@@ -624,6 +631,8 @@ function TrackChart({
   height: number;
   stepX: number;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const bars = samples.length;
   return (
     <View style={styles.trackRow}>
@@ -660,6 +669,8 @@ function TrackChart({
 }
 
 function PermItem({ icon, text }: { icon: string; text: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.permItem}>
       <Ionicons name={icon as any} size={16} color={colors.brand} />
@@ -667,8 +678,7 @@ function PermItem({ icon, text }: { icon: string; text: string }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,

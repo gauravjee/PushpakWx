@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView, TextInput, FlatList,
   ActivityIndicator, Modal, KeyboardAvoidingView, Platform,
@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Airport } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
 import {
@@ -53,7 +54,9 @@ function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number): nu
 
 const genKey = () => Math.random().toString(36).slice(2, 9);
 
-export default function RouteScreen() {
+export default function RouteScreen() {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { prefs } = usePrefs();
   const [waypoints, setWaypoints] = useState<Waypoint[]>([
@@ -295,6 +298,8 @@ function WaypointCard({
   onRemove?: () => void;
   prefs: any;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const badge = wp.role === 'DEP' ? 'DEP' : wp.role === 'DEST' ? 'DEST' : 'STOP';
   const badgeColor = wp.role === 'DEP' ? colors.success : wp.role === 'DEST' ? colors.error : colors.info;
   return (
@@ -363,6 +368,8 @@ function AirportPickerModal({
   onClose: () => void;
   onPick: (a: Airport) => void;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Airport[]>([]);
   const [loading, setLoading] = useState(false);
@@ -451,6 +458,8 @@ function AirportPickerModal({
 }
 
 function SummaryItem({ label, value, unit, accent }: { label: string; value: string; unit: string; accent?: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.summaryItem}>
       <Text style={styles.summaryItemLabel}>{label}</Text>
@@ -462,7 +471,7 @@ function SummaryItem({ label, value, unit, accent }: { label: string; value: str
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md,

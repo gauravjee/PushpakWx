@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, Pressable, Alert,
 } from 'react-native';
@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Airport } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
 import {
@@ -32,6 +33,8 @@ type LocationInfo = {
 };
 
 export default function Dashboard() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const params = useLocalSearchParams<{ lat?: string; lon?: string; label?: string; sub?: string; icao?: string; elevation?: string }>();
   const { prefs } = usePrefs();
   const router = useRouter();
@@ -73,14 +76,12 @@ export default function Dashboard() {
 
   const initGPS = useCallback(async () => {
     try {
-      // Ask for location permission on first load so the dashboard can show local weather.
-      let p = await Location.getForegroundPermissionsAsync();
+      // Only use GPS if permission has ALREADY been granted (don't prompt on WX tab).
+      // Permission is requested contextually inside the InFlight tab.
+      const p = await Location.getForegroundPermissionsAsync();
       if (p.status !== 'granted') {
-          p = await Location.requestForegroundPermissionsAsync();
-      }
-      if (p.status !== 'granted') {
-           await loadForLocation({ label: 'KJFK', sub: 'John F Kennedy Intl · New York', lat: 40.6413, lon: -73.7781, icao: 'KJFK', elevation_ft: 13 });
-           return;
+        await loadForLocation({ label: 'KJFK', sub: 'John F Kennedy Intl · New York', lat: 40.6413, lon: -73.7781, icao: 'KJFK', elevation_ft: 13 });
+        return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude, longitude } = pos.coords;
@@ -403,6 +404,8 @@ export default function Dashboard() {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -412,6 +415,8 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function DetailItem({ icon, label, value }: { icon: string; label: string; value: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.detailItem}>
       <Ionicons name={icon as any} size={18} color={colors.brand} />
@@ -421,7 +426,7 @@ function DetailItem({ icon, label, value }: { icon: string; label: string; value
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: 8 },
   muted: { color: colors.onSurfaceSecondary, fontSize: 13 },
   errTitle: { color: colors.onSurface, fontSize: 16, fontWeight: '700', marginTop: 4 },

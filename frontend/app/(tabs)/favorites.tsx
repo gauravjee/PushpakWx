@@ -1,12 +1,15 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo} from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette} from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Favorite } from '@/src/api/client';
 
 export default function Favorites() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const [favs, setFavs] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,8 +102,7 @@ export default function Favorites() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md },
   title: { color: colors.onSurface, fontSize: 26, fontWeight: '800', letterSpacing: 2 },

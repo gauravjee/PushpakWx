@@ -8,9 +8,26 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/context/AuthContext";
 import { PrefsProvider } from "@/src/context/PrefsContext";
+import { ThemeProvider, useTheme } from "@/src/context/ThemeContext";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
+
+function ThemedShell() {
+  const { effectiveScheme, colors } = useTheme();
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <StatusBar style={effectiveScheme === "light" ? "dark" : "light"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.surface },
+          animation: "fade",
+        }}
+      />
+    </View>
+  );
+}
 
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
@@ -27,16 +44,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <PrefsProvider>
-          <View style={{ flex: 1, backgroundColor: "#111315" }}>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: "#111315" },
-                animation: "fade",
-              }}
-            />
-          </View>
+          <ThemeProvider>
+            <ThemedShell />
+          </ThemeProvider>
         </PrefsProvider>
       </AuthProvider>
     </SafeAreaProvider>

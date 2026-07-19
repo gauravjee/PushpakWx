@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TextInput, FlatList, Pressable, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette} from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Airport } from '@/src/api/client';
 
 type SearchMode = 'airport' | 'city';
 
 export default function Search() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const [mode, setMode] = useState<SearchMode>('airport');
   const [q, setQ] = useState('');
@@ -144,6 +147,8 @@ export default function Search() {
 }
 
 function Chip({ label, active, onPress, testID }: { label: string; active: boolean; onPress: () => void; testID?: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Pressable
       testID={testID}
@@ -156,6 +161,8 @@ function Chip({ label, active, onPress, testID }: { label: string; active: boole
 }
 
 function EmptyState({ q, text }: { q: string; text: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.empty}>
       <Ionicons name={q ? 'search-outline' : 'compass-outline'} size={42} color={colors.onSurfaceTertiary} />
@@ -163,8 +170,7 @@ function EmptyState({ q, text }: { q: string; text: string }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   headerBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, gap: spacing.md, backgroundColor: colors.surface },
   title: { color: colors.onSurface, fontSize: 26, fontWeight: '800', letterSpacing: 2 },

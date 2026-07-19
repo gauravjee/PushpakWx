@@ -1,16 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, FlightDetail } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
 import { convertAlt, altUnitLabel, convertWind, windUnitLabel } from '@/src/utils/weather';
 import { FlightTrackMap, TrackSample } from '@/src/components/FlightTrackMap';
 
-export default function FlightDetailScreen() {
+export default function FlightDetailScreen() {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { prefs } = usePrefs();
@@ -203,6 +206,8 @@ export default function FlightDetailScreen() {
 }
 
 function StatCard({ label, value, unit }: { label: string; value: string; unit: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.statCard}>
       <Text style={styles.statCardLabel}>{label}</Text>
@@ -222,7 +227,7 @@ function formatDuration(s: number): string {
   return `${m}m ${sec.toString().padStart(2, '0')}s`;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   errText: { color: colors.onSurface, fontSize: 15 },
   backBtnBig: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md, backgroundColor: colors.brand, borderRadius: radius.md },

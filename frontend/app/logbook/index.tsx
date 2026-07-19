@@ -1,14 +1,17 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, FlightSummary } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
 import { convertAlt, altUnitLabel } from '@/src/utils/weather';
 
-export default function Logbook() {
+export default function Logbook() {  const colors = useThemeColors();
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const { prefs } = usePrefs();
   const [flights, setFlights] = useState<FlightSummary[]>([]);
@@ -84,6 +87,8 @@ export default function Logbook() {
 }
 
 function Stat({ label, value, unit }: { label: string; value: string; unit: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -109,7 +114,7 @@ function formatDuration(s: number): string {
   return `${m}m`;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,

@@ -1,10 +1,13 @@
-import { useEffect } from 'react';
+import { ColorPalette } from '@/src/theme';
+import { useEffect, useMemo } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/src/context/AuthContext';
-import { colors } from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 
 export default function Index() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -23,7 +26,7 @@ export default function Index() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   title: { color: colors.onSurface, fontSize: 42, fontWeight: '800', letterSpacing: 6 },
   subtitle: { color: colors.brand, fontSize: 20, fontWeight: '600', letterSpacing: 8, marginTop: 4 },

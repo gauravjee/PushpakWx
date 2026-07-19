@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo} from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { colors, spacing, radius } from '@/src/theme';
+import { spacing, radius, ColorPalette} from '@/src/theme';
+import { useThemeColors } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/context/AuthContext';
 import { usePrefs } from '@/src/context/PrefsContext';
 
 export default function Settings() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { user, logout, deleteAccount } = useAuth();
   const { prefs, updatePrefs } = usePrefs();
   const router = useRouter();
@@ -149,7 +152,7 @@ export default function Settings() {
           <View style={styles.betaNote}>
             <Ionicons name="information-circle-outline" size={14} color={colors.info} />
             <Text style={styles.betaText}>
-              Dark mode is the primary theme built for cockpit readability. Light &amp; Auto (system) rollout is in progress — your preference is saved and will apply as more screens are converted.
+              Dark mode is built for cockpit readability and is the default. Auto follows your device's system setting and switches automatically between day and night.
             </Text>
           </View>
         </Section>
@@ -262,6 +265,8 @@ export default function Settings() {
 }
 
 function ConfirmItem({ text }: { text: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.confirmItem}>
       <Ionicons name="close-circle" size={14} color={colors.error} />
@@ -271,6 +276,8 @@ function ConfirmItem({ text }: { text: string }) {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -288,6 +295,8 @@ function SegRow({
   onChange: (k: any) => void;
   testID?: string;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.segRow} testID={testID}>
       <Text style={styles.segLabel}>{label}</Text>
@@ -311,6 +320,8 @@ function SegRow({
 }
 
 function InfoRow({ icon, label, value, multiLine }: { icon: string; label: string; value: string; multiLine?: boolean }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.infoRow}>
       <Ionicons name={icon as any} size={18} color={colors.brand} />
@@ -327,6 +338,8 @@ function ToggleRow({
 }: {
   label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; testID?: string;
 }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Pressable
       testID={testID}
@@ -343,8 +356,7 @@ function ToggleRow({
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
+const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md },
   title: { color: colors.onSurface, fontSize: 26, fontWeight: '800', letterSpacing: 2 },

@@ -1,6 +1,8 @@
 // Design tokens from /app/design_guidelines.json - Dark-First Utility
 
-export const colors = {
+export type ColorPalette = typeof darkColors;
+
+export const darkColors = {
   surface: '#111315',
   onSurface: '#FFFFFF',
   surfaceSecondary: '#1C1F22',
@@ -25,6 +27,39 @@ export const colors = {
   borderStrong: '#3E454D',
   divider: '#1F2328',
 };
+
+export const lightColors: ColorPalette = {
+  surface: '#F5F6F7',
+  onSurface: '#101214',
+  surfaceSecondary: '#FFFFFF',
+  onSurfaceSecondary: '#5B6167',
+  surfaceTertiary: '#E9EBED',
+  onSurfaceTertiary: '#767C82',
+  brand: '#CC7F08',
+  brandPrimary: '#CC7F08',
+  onBrandPrimary: '#FFFFFF',
+  brandSecondary: '#FF9F0A',
+  brandTertiary: '#FFEED1',
+  onBrandTertiary: '#CC7F08',
+  success: '#248A3D',
+  warning: '#B25E00',
+  error: '#D70015',
+  info: '#0066CC',
+  vfr: '#248A3D',
+  mvfr: '#0066CC',
+  ifr: '#D70015',
+  lifr: '#8944AB',
+  border: '#D8DBDE',
+  borderStrong: '#B8BDC2',
+  divider: '#E3E5E8',
+};
+
+/**
+ * Static dark palette — used by screens shown before login (auth flow) where
+ * there's no saved preference to read yet, and as a safe default anywhere
+ * useThemeColors() isn't available (outside ThemeProvider).
+ */
+export const colors: ColorPalette = darkColors;
 
 export const spacing = {
   xs: 4,
