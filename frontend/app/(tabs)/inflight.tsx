@@ -42,6 +42,10 @@ export default function InFlight() {
   const locSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgRef = useRef<number>(0);
+  const [webCompassNeedsPermission, setWebCompassNeedsPermission] = useState(false);
+  const [webCompassUnavailable, setWebCompassUnavailable] = useState(false);
+  const webOrientationHandlerRef = useRef<((e: any) => void) | null>(null);
+  const webOrientationEventNameRef = useRef<string>('deviceorientation');
   const recordingRef = useRef(false);
   // Auto-detect state
   const fastSinceRef = useRef<number | null>(null); // ms when speed first crossed >= 30kt
@@ -72,6 +76,61 @@ export default function InFlight() {
       hdgSubRef.current?.remove();
     };
   }, []);
+
+  // Browser compass fallback for web (expo-location's watchHeadingAsync is
+  // native-only). Uses the DeviceOrientation API directly — works on phones
+  // with a real magnetometer (Android Chrome, iOS Safari after permission);
+  // laptops/desktops have no such sensor and will simply stay unavailable.
+  const attachWebOrientationListener = () => {
+    const handler = (e: any) => {
+      let heading: number | null = null;
+      if (typeof e.webkitCompassHeading === 'number') {
+        // iOS Safari gives true compass heading directly, no conversion needed.
+        heading = e.webkitCompassHeading;
+      } else if (typeof e.alpha === 'number' && (e.absolute === true || webOrientationEventNameRef.current === 'deviceorientationabsolute')) {
+        heading = (360 - e.alpha) % 360;
+      }
+      if (heading != null && heading >= 0) {
+        setHeading(heading);
+        hdgRef.current = heading;
+        setWebCompassUnavailable(false);
+      }
+    };
+    webOrientationHandlerRef.current = handler;
+    const hasAbsolute = 'ondeviceorientationabsolute' in window;
+    webOrientationEventNameRef.current = hasAbsolute ? 'deviceorientationabsolute' : 'deviceorientation';
+    window.addEventListener(webOrientationEventNameRef.current, handler as any, true);
+  };
+
+  const setupWebCompass = () => {
+    if (typeof window === 'undefined' || typeof (window as any).DeviceOrientationEvent === 'undefined') {
+      setWebCompassUnavailable(true);
+      return;
+    }
+    const DOE: any = (window as any).DeviceOrientationEvent;
+    if (typeof DOE.requestPermission === 'function') {
+      // iOS Safari — must be requested from a user gesture (button tap below).
+      setWebCompassNeedsPermission(true);
+      return;
+    }
+    // Android Chrome and others — no explicit permission step needed.
+    attachWebOrientationListener();
+  };
+
+  const requestWebCompassPermission = async () => {
+    try {
+      const DOE: any = (window as any).DeviceOrientationEvent;
+      const result = await DOE.requestPermission();
+      if (result === 'granted') {
+        setWebCompassNeedsPermission(false);
+        attachWebOrientationListener();
+      } else {
+        setWebCompassUnavailable(true);
+      }
+    } catch {
+      setWebCompassUnavailable(true);
+    }
+  };
 
   // Start watching once granted
   useEffect(() => {
@@ -156,14 +215,19 @@ export default function InFlight() {
             });
           },
         );
-        hdgSubRef.current = Platform.OS === 'web' ? null : await Location.watchHeadingAsync((h) => {
-          if (cancelled) return;
-          const val = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
-          if (val >= 0) {
-            setHeading(val);
-            hdgRef.current = val;
-          }
-        });
+        if (Platform.OS === 'web') {
+          hdgSubRef.current = null;
+          setupWebCompass();
+        } else {
+          hdgSubRef.current = await Location.watchHeadingAsync((h) => {
+            if (cancelled) return;
+            const val = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
+            if (val >= 0) {
+              setHeading(val);
+              hdgRef.current = val;
+            }
+          });
+        }
       } catch {
         // ignore
       }
@@ -174,6 +238,10 @@ export default function InFlight() {
       hdgSubRef.current?.remove();
       locSubRef.current = null;
       hdgSubRef.current = null;
+      if (Platform.OS === 'web' && webOrientationHandlerRef.current) {
+        window.removeEventListener(webOrientationEventNameRef.current, webOrientationHandlerRef.current as any, true);
+        webOrientationHandlerRef.current = null;
+      }
     };
   }, [permStatus]);
 
@@ -399,6 +467,16 @@ export default function InFlight() {
         {/* Compass */}
         <View style={{ alignItems: 'center', paddingVertical: spacing.md }}>
           <CompassRose heading={heading} size={compassSize} />
+          {Platform.OS === 'web' && webCompassNeedsPermission && (
+            <Pressable
+              testID="enable-web-compass-button"
+              onPress={requestWebCompassPermission}
+              style={styles.enableCompassBtn}
+            >
+              <Ionicons name="compass-outline" size={14} color={colors.brand} />
+              <Text style={styles.enableCompassText}>ENABLE COMPASS</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Big metrics */}
@@ -680,6 +758,19 @@ function PermItem({ icon, text }: { icon: string; text: string }) {
 }
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  enableCompassBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.brand,
+  },
+  enableCompassText: { color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm,
