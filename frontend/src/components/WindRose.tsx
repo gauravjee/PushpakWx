@@ -25,8 +25,10 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 240 }: Prop
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inner = size - 30;
-  const arrowW = Math.max(18, inner * 0.13);
-  const arrowH = Math.max(26, inner * 0.22);
+  const arrowTopOffset = 16; // distance from the rim (matches tick-mark clearance)
+  const centerClearance = 52; // reserved radius around center for the speed/dir/gust text
+  const arrowW = Math.max(14, inner * 0.10);
+  const arrowH = Math.max(18, Math.min(inner * 0.15, inner / 2 - arrowTopOffset - centerClearance));
 
   const cardinals = [
     { label: 'N', angle: 0, color: colors.brand },
@@ -115,7 +117,7 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 240 }: Prop
           width={arrowW}
           height={arrowH}
           viewBox={`0 0 ${arrowW} ${arrowH}`}
-          style={{ position: 'absolute', top: 14, left: inner / 2 - arrowW / 2 }}
+          style={{ position: 'absolute', top: arrowTopOffset, left: inner / 2 - arrowW / 2 }}
         >
           <Polygon
             points={`${arrowW / 2},0 ${arrowW / 2},${arrowH * 0.72} 0,${arrowH}`}
