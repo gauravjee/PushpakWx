@@ -165,8 +165,10 @@ export default function Settings() {
         </Section>
 
         <Section title="ABOUT">
-          <InfoRow icon="cloud-outline" label="Weather data" value="Open-Meteo" />
+          <InfoRow icon="apps-outline" label="App" value={Constants.expoConfig?.name ?? 'PushpakWx'} />
           <InfoRow icon="information-circle-outline" label="Version" value={Constants.expoConfig?.version ?? '—'} />
+          <InfoRow icon="build-outline" label="Build" value={String(Constants.androidManifest?.versionCode ?? '—')} />
+          <InfoRow icon="cloud-outline" label="Weather data" value="Open-Meteo" />
           <InfoRow
             icon="warning-outline"
             label="Disclaimer"
@@ -174,6 +176,10 @@ export default function Settings() {
             multiLine
           />
         </Section>
+
+        <Text style={styles.copyright}>
+          © {new Date().getFullYear()} MaheSho Technologies LLP. All rights reserved.
+        </Text>
 
         <Pressable testID="logout-button" onPress={onLogout} style={styles.logoutBtn}>
           <Ionicons name="log-out-outline" size={18} color={colors.error} />
@@ -367,6 +373,14 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md },
   title: { color: colors.onSurface, fontSize: 26, fontWeight: '800', letterSpacing: 2 },
+  copyright: {
+    textAlign: 'center',
+    color: colors.onSurfaceTertiary,
+    fontSize: 11,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xl,
+    paddingHorizontal: spacing.lg,
+  },
   section: { paddingHorizontal: spacing.lg, marginTop: spacing.md },
   sectionTitle: { color: colors.onSurfaceTertiary, fontSize: 11, letterSpacing: 2, marginBottom: spacing.sm, fontWeight: '700' },
   sectionCard: {
