@@ -95,7 +95,9 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 240 }: Prop
         })}
       </View>
 
-      {/* Direction arrow — this is the part that rotates */}
+      {/* Direction arrow — this is the part that rotates. Kept short and
+          confined to the outer ring (like an RMI needle) so it never
+          overlaps the digital readout sitting in the center hub. */}
       <View
         style={{
           position: 'absolute',
@@ -106,7 +108,7 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 240 }: Prop
           pointerEvents: 'none',
         }}
       >
-        <View style={[styles.arrowShaft, { height: inner / 2 - 30 }]} />
+        <View style={[styles.arrowShaft, { height: Math.max(20, inner / 2 - 14 - 58) }]} />
         <View style={styles.arrowHead} />
       </View>
 
