@@ -1,14 +1,19 @@
+import { useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { radius } from '@/src/theme';
+import { SafetyDisclaimer } from '@/src/components/SafetyDisclaimer';
 
 export default function TabsLayout() {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+  const [disclaimerVisible, setDisclaimerVisible] = useState(true);
   return (
-    <Tabs
+    <>
+      <SafetyDisclaimer visible={disclaimerVisible} onAcknowledge={() => setDisclaimerVisible(false)} />
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.brand,
@@ -66,5 +71,6 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 }
