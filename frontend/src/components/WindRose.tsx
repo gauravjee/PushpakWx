@@ -19,7 +19,7 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Prop
   const outer = size;
   const inner = size - 24;
   return (
-    <View testID="wind-rose" style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center' }}>
+    <View testID="wind-rose" style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: outer / 2 }}>
       {/* Outer ring */}
       <View style={[styles.ring, { width: outer, height: outer, borderRadius: outer / 2 }]} />
       {/* Inner ring */}

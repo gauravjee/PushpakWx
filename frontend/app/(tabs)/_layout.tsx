@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/src/context/ThemeContext';
+import { radius } from '@/src/theme';
 
 export default function TabsLayout() {
   const colors = useThemeColors();
@@ -12,6 +13,12 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.brand,
         tabBarInactiveTintColor: colors.onSurfaceTertiary,
+        tabBarActiveBackgroundColor: colors.brandTertiary,
+        tabBarItemStyle: {
+          borderRadius: radius.md,
+          marginHorizontal: 4,
+          marginVertical: 4,
+        },
         tabBarStyle: {
           backgroundColor: colors.surfaceSecondary,
           borderTopColor: colors.border,
