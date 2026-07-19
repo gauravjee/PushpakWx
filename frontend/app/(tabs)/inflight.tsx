@@ -18,6 +18,8 @@ type Sample = TrackSample;
 // Retain samples for up to 2 hours (7200 samples at 1 Hz)
 const TRACK_MAX_SAMPLES = 7200;
 const TRACK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+// Pre-flight preview: short rolling window, just for orientation before recording starts
+const PREVIEW_MAX_SAMPLES = 300;
 
 export default function InFlight() {
   const colors = useThemeColors();
@@ -31,6 +33,7 @@ export default function InFlight() {
   const [loc, setLoc] = useState<Location.LocationObject | null>(null);
   const [heading, setHeading] = useState<number>(0);
   const [samples, setSamples] = useState<Sample[]>([]);
+  const [previewSamples, setPreviewSamples] = useState<Sample[]>([]);
   const [recording, setRecording] = useState(false);
   const [recordStartMs, setRecordStartMs] = useState<number | null>(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
@@ -197,6 +200,22 @@ export default function InFlight() {
               slowSinceRef.current = null;
             }
             // -----------------------------------------
+
+            // Live preview buffer — always updates regardless of recording
+            // state, so the map shows your current position/track before
+            // you've tapped Start Flight. Kept short since it's just for
+            // orientation, not part of the saved flight.
+            setPreviewSamples(prev => {
+              const next = [...prev, {
+                t: now,
+                lat: l.coords.latitude,
+                lon: l.coords.longitude,
+                altFt,
+                speedKt,
+                heading: hdgRef.current,
+              }];
+              return next.slice(-PREVIEW_MAX_SAMPLES);
+            });
 
             if (!recordingRef.current) return;
             setSamples(prev => {
@@ -524,7 +543,7 @@ export default function InFlight() {
             <Text style={styles.sectionTitle}>FLIGHT TRACK · UP TO 2H</Text>
             <Text style={styles.sectionSub}>{samples.length}/{TRACK_MAX_SAMPLES}</Text>
           </View>
-          <FlightTrackMap samples={samples} height={240} isRecording={recording} />
+          <FlightTrackMap samples={recording ? samples : previewSamples} height={240} isRecording={recording} />
         </View>
 
         {/* Track log */}
