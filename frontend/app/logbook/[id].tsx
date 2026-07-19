@@ -37,6 +37,19 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
   }, [id]);
 
   const doDelete = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete flight — this will be permanently removed. Are you sure?')) {
+        (async () => {
+          try {
+            await api.deleteFlight(id as string);
+            router.back();
+          } catch (e: any) {
+            window.alert(e.message || 'Delete failed');
+          }
+        })();
+      }
+      return;
+    }
     Alert.alert('Delete flight', 'This flight will be permanently removed.', [
       { text: 'Cancel', style: 'cancel' },
       {

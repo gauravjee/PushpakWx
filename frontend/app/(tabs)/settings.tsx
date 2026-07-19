@@ -22,6 +22,12 @@ export default function Settings() {
   const [showDeleted, setShowDeleted] = useState(false);
 
   const onLogout = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Sign out — are you sure?')) {
+        logout().then(() => router.replace('/auth/login'));
+      }
+      return;
+    }
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       {
