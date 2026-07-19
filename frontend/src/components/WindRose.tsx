@@ -12,82 +12,105 @@ type Props = {
   size?: number;
 };
 
-export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Props) {  const colors = useThemeColors();
-
+/**
+ * Wind direction dial, styled to match CompassRose's instrument-panel look
+ * (dark gauge face, brand-colored ticks/N marker) so the WX tab and InFlight
+ * tab feel like the same instrument family. Unlike CompassRose (which
+ * rotates the whole dial heading-up), the ring here stays fixed — north is
+ * always up — and only the direction arrow rotates, since this shows wind
+ * direction relative to true/mag north, not aircraft heading.
+ */
+export function WindRose({ direction, speed, gust, unitLabel, size = 240 }: Props) {
+  const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const half = size / 2;
-  const outer = size;
-  const inner = size - 24;
+  const inner = size - 30;
+
+  const cardinals = [
+    { label: 'N', angle: 0, color: colors.brand },
+    { label: 'E', angle: 90, color: '#C7CCD1' },
+    { label: 'S', angle: 180, color: '#C7CCD1' },
+    { label: 'W', angle: 270, color: '#C7CCD1' },
+  ];
+
   return (
-    <View testID="wind-rose" style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: outer / 2 }}>
-      {/* Outer ring */}
-      <View style={[styles.ring, { width: outer, height: outer, borderRadius: outer / 2 }]} />
-      {/* Inner ring */}
-      <View style={[styles.ringInner, { width: inner, height: inner, borderRadius: inner / 2, position: 'absolute' }]} />
-      {/* Cardinal markers */}
-      {(['N', 'E', 'S', 'W'] as const).map((c, i) => {
-        const angle = i * 90;
-        const rad = (angle * Math.PI) / 180;
-        const r = half - 6;
-        const x = half + r * Math.sin(rad) - 8;
-        const y = half - r * Math.cos(rad) - 10;
-        return (
-          <Text
-            key={c}
-            style={[styles.cardinal, { left: x, top: y, color: c === 'N' ? colors.brand : colors.onSurfaceSecondary }]}
-          >
-            {c}
-          </Text>
-        );
-      })}
-      {/* Tick marks every 30 deg */}
-      {Array.from({ length: 12 }).map((_, i) => {
-        const angle = i * 30;
-        return (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              width: 2,
-              height: 8,
-              backgroundColor: colors.borderStrong,
-              top: half - inner / 2 + 2,
-              left: half - 1,
-              transform: [
-                { translateY: 0 },
-                { rotate: `${angle}deg` },
-                { translateY: -(inner / 2 - 8) },
-              ],
-            }}
-          />
-        );
-      })}
-      {/* Direction arrow (points FROM wind coming from — i.e., barb points to origin direction) */}
+    <View testID="wind-rose" style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: size / 2 }}>
+      {/* Outer ring (fixed dark gauge face, matches CompassRose) */}
+      <View style={[styles.ring, { width: size, height: size, borderRadius: size / 2 }]} />
+
+      {/* Fixed dial: cardinal letters + tick marks (north stays up) */}
+      <View style={{ position: 'absolute', width: inner, height: inner, borderRadius: inner / 2 }}>
+        {cardinals.map((c) => {
+          const rad = (c.angle * Math.PI) / 180;
+          const r = inner / 2 - 20;
+          const x = inner / 2 + r * Math.sin(rad) - 12;
+          const y = inner / 2 - r * Math.cos(rad) - 14;
+          return (
+            <Text
+              key={c.label}
+              style={[styles.cardinal, { left: x, top: y, color: c.color }]}
+            >
+              {c.label}
+            </Text>
+          );
+        })}
+        {/* Major ticks every 30deg */}
+        {Array.from({ length: 12 }).map((_, i) => {
+          const angle = i * 30;
+          const isMajor = angle % 90 === 0;
+          return (
+            <View
+              key={i}
+              style={{
+                position: 'absolute',
+                width: 2,
+                height: isMajor ? 14 : 8,
+                backgroundColor: isMajor ? colors.brand : '#5A6068',
+                top: 4,
+                left: inner / 2 - 1,
+                transformOrigin: `1px ${inner / 2 - 4}px`,
+                transform: [{ rotate: `${angle}deg` }],
+              }}
+            />
+          );
+        })}
+        {/* Minor ticks every 10deg */}
+        {Array.from({ length: 36 }).map((_, i) => {
+          const angle = i * 10;
+          if (angle % 30 === 0) return null;
+          return (
+            <View
+              key={`m${i}`}
+              style={{
+                position: 'absolute',
+                width: 1,
+                height: 5,
+                backgroundColor: '#5A6068',
+                top: 4,
+                left: inner / 2 - 0.5,
+                transformOrigin: `0.5px ${inner / 2 - 4}px`,
+                transform: [{ rotate: `${angle}deg` }],
+              }}
+            />
+          );
+        })}
+      </View>
+
+      {/* Direction arrow — this is the part that rotates */}
       <View
         style={{
           position: 'absolute',
-          width: 4,
-          height: inner - 40,
-          backgroundColor: colors.brand,
-          borderRadius: 4,
-          transform: [{ rotate: `${direction}deg` }],
-          pointerEvents: 'none',
-        }}
-      />
-      {/* Arrow head at N-side of stick, so rotate group */}
-      <View
-        style={{
-          position: 'absolute',
-          transform: [{ rotate: `${direction}deg` }],
+          width: inner,
+          height: inner,
           alignItems: 'center',
-          justifyContent: 'flex-start',
-          height: inner - 40,
+          transform: [{ rotate: `${direction}deg` }],
           pointerEvents: 'none',
         }}
       >
+        <View style={[styles.arrowShaft, { height: inner / 2 - 30 }]} />
         <View style={styles.arrowHead} />
       </View>
-      {/* Center readout */}
+
+      {/* Center readout (stays upright, doesn't rotate) */}
       <View style={[styles.center, { pointerEvents: 'none' }]}>
         <Text style={styles.speed}>{Math.round(speed)}</Text>
         <Text style={styles.unit}>{unitLabel}</Text>
@@ -103,26 +126,35 @@ export function WindRose({ direction, speed, gust, unitLabel, size = 220 }: Prop
 const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   ring: {
     borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceSecondary,
-  },
-  ringInner: {
-    borderWidth: 1,
-    borderColor: colors.divider,
+    borderColor: colors.brand + '55',
+    backgroundColor: '#0A0C0E',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 8,
   },
   cardinal: {
     position: 'absolute',
-    width: 16,
+    width: 24,
     textAlign: 'center',
-    fontWeight: '700',
-    fontSize: 13,
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  arrowShaft: {
+    width: 4,
+    backgroundColor: colors.brand,
+    borderRadius: 4,
+    marginTop: 14,
   },
   arrowHead: {
+    position: 'absolute',
+    top: 0,
     width: 0,
     height: 0,
     borderLeftWidth: 8,
     borderRightWidth: 8,
-    borderBottomWidth: 12,
+    borderBottomWidth: 14,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderBottomColor: colors.brand,
@@ -132,8 +164,8 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.md,
   },
-  speed: { color: colors.onSurface, fontSize: 44, fontWeight: '800', lineHeight: 48 },
-  unit: { color: colors.onSurfaceSecondary, fontSize: 12, letterSpacing: 1 },
-  dir: { color: colors.onSurface, fontSize: 14, marginTop: 4, fontWeight: '600' },
+  speed: { color: '#FFFFFF', fontSize: 40, fontWeight: '800', lineHeight: 44 },
+  unit: { color: '#C7CCD1', fontSize: 12, letterSpacing: 1 },
+  dir: { color: '#FFFFFF', fontSize: 13, marginTop: 4, fontWeight: '600' },
   gust: { color: colors.warning, fontSize: 13, marginTop: 2, fontWeight: '700' },
 });
