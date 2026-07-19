@@ -160,9 +160,10 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     borderBottomColor: colors.brand,
   },
   center: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.md,
   },
   speed: { color: '#FFFFFF', fontSize: 40, fontWeight: '800', lineHeight: 44 },
   unit: { color: '#C7CCD1', fontSize: 12, letterSpacing: 1 },
