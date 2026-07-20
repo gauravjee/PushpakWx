@@ -42,7 +42,8 @@ export function WindComponentCalc({ windDirDeg, windSpeedKt, gustKt, unit, icao 
         if (cancelled) return;
         setRealRunways(res.runway_ends && res.runway_ends.length > 0 ? res.runway_ends : null);
         if (res.runway_ends && res.runway_ends.length > 0) {
-          setRwyText(res.runway_ends[0].ident);
+          const n = parseInt(res.runway_ends[0].ident, 10);
+          setRwyText(!isNaN(n) ? ((n * 10) % 360).toString() : res.runway_ends[0].ident);
         }
       })
       .catch(() => { if (!cancelled) setRealRunways(null); });
@@ -71,6 +72,12 @@ export function WindComponentCalc({ windDirDeg, windSpeedKt, gustKt, unit, icao 
     return { hw, xw, xwSigned, gustHw, gustXw, rel };
   }, [rwyHeading, windDirDeg, windSpeedKt, gustKt]);
 
+  const identToHeading = (ident: string): number => {
+    const n = parseInt(ident, 10);
+    if (isNaN(n)) return 0;
+    return (n * 10) % 360;
+  };
+
   const bumpRwy = (delta: number) => {
     const cur = parseInt(rwyText, 10);
     if (isNaN(cur)) return;
@@ -78,6 +85,9 @@ export function WindComponentCalc({ windDirDeg, windSpeedKt, gustKt, unit, icao 
     if (cur >= 1 && cur <= 36) {
       if (next < 1) next = 36;
       if (next > 36) next = 1;
+    } else {
+      // Degree mode (e.g. after tapping a real runway chip) — wrap 0-359
+      next = ((next % 360) + 360) % 360;
     }
     setRwyText(next.toString());
   };
@@ -86,51 +96,56 @@ export function WindComponentCalc({ windDirDeg, windSpeedKt, gustKt, unit, icao 
     <View style={styles.card} testID="wind-component-card">
       <View style={styles.headerRow}>
         <Text style={styles.title}>RUNWAY WIND</Text>
-        {!realRunways && (
-          <View style={styles.rwyRow}>
-            <Pressable
-              testID="rwy-dec"
-              onPress={() => bumpRwy(-1)}
-              style={styles.stepBtn}
-            >
-              <Ionicons name="remove" size={16} color={colors.brand} />
-            </Pressable>
-            <View style={styles.rwyInputWrap}>
-              <Text style={styles.rwyPrefix}>RWY</Text>
-              <TextInput
-                testID="rwy-input"
-                style={styles.rwyInput}
-                value={rwyText}
-                onChangeText={t => setRwyText(t.replace(/[^0-9]/g, '').slice(0, 3))}
-                keyboardType="number-pad"
-                maxLength={3}
-                selectTextOnFocus
-              />
-            </View>
-            <Pressable
-              testID="rwy-inc"
-              onPress={() => bumpRwy(1)}
-              style={styles.stepBtn}
-            >
-              <Ionicons name="add" size={16} color={colors.brand} />
-            </Pressable>
+        <View style={styles.rwyRow}>
+          <Pressable
+            testID="rwy-dec"
+            onPress={() => bumpRwy(-1)}
+            style={styles.stepBtn}
+          >
+            <Ionicons name="remove" size={16} color={colors.brand} />
+          </Pressable>
+          <View style={styles.rwyInputWrap}>
+            <Text style={styles.rwyPrefix}>RWY</Text>
+            <TextInput
+              testID="rwy-input"
+              style={styles.rwyInput}
+              value={rwyText}
+              onChangeText={t => setRwyText(t.replace(/[^0-9]/g, '').slice(0, 3))}
+              keyboardType="number-pad"
+              maxLength={3}
+              selectTextOnFocus
+            />
           </View>
-        )}
+          <Pressable
+            testID="rwy-inc"
+            onPress={() => bumpRwy(1)}
+            style={styles.stepBtn}
+          >
+            <Ionicons name="add" size={16} color={colors.brand} />
+          </Pressable>
+        </View>
       </View>
 
       {realRunways && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rwyChipRow} testID="rwy-real-picker">
-          {realRunways.map(rw => (
-            <Pressable
-              key={rw.ident}
-              testID={`rwy-chip-${rw.ident}`}
-              onPress={() => setRwyText(rw.ident)}
-              style={[styles.rwyChip, rwyText === rw.ident && styles.rwyChipActive]}
-            >
-              <Text style={[styles.rwyChipText, rwyText === rw.ident && styles.rwyChipTextActive]}>{rw.ident}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rwyChipRow} testID="rwy-real-picker">
+            {realRunways.map(rw => {
+              const rwHeading = identToHeading(rw.ident);
+              const isActive = parseInt(rwyText, 10) === rwHeading;
+              return (
+                <Pressable
+                  key={rw.ident}
+                  testID={`rwy-chip-${rw.ident}`}
+                  onPress={() => setRwyText(rwHeading.toString())}
+                  style={[styles.rwyChip, isActive && styles.rwyChipActive]}
+                >
+                  <Text style={[styles.rwyChipText, isActive && styles.rwyChipTextActive]}>{rw.ident}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <Text style={styles.rwyHint}>Tap a runway, then fine-tune the heading above if needed</Text>
+        </>
       )}
 
       {rwyHeading == null || !components ? (
@@ -234,6 +249,7 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   },
   rwyChipText: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: '700' },
   rwyChipTextActive: { color: colors.brand },
+  rwyHint: { color: colors.onSurfaceTertiary, fontSize: 10, marginBottom: spacing.xs, fontStyle: 'italic' },
   stepBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surfaceTertiary, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
   rwyInputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, paddingHorizontal: 6, borderWidth: 1, borderColor: colors.border },
   rwyPrefix: { color: colors.onSurfaceSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
