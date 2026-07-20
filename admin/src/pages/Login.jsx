@@ -28,6 +28,7 @@ export default function Login({ onLoggedIn }) {
   return (
     <div className="login-shell">
       <form className="login-card" onSubmit={handleSubmit}>
+        <img src="/logo.png" alt="PushpakWx" className="login-logo" />
         <div className="login-title">PushpakWx Admin</div>
         <div className="login-sub">Sign in with your admin account</div>
 
