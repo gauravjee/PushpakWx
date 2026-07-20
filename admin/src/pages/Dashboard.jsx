@@ -1,15 +1,32 @@
 import { useEffect, useState } from 'react'
-import { getOverview } from '../api'
+import { getOverview, importAirports } from '../api'
 import StatCard from '../components/StatCard'
 import BarChart from '../components/BarChart'
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
+  const [importError, setImportError] = useState('')
 
   useEffect(() => {
     getOverview().then(setData).catch((e) => setError(e.message))
   }, [])
+
+  async function handleImportAirports() {
+    setImporting(true)
+    setImportError('')
+    setImportResult(null)
+    try {
+      const result = await importAirports()
+      setImportResult(result)
+    } catch (e) {
+      setImportError(e.message)
+    } finally {
+      setImporting(false)
+    }
+  }
 
   if (error) return <div className="empty-state">{error}</div>
   if (!data) return <div className="loading-state">Loading overview…</div>
@@ -56,6 +73,29 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      <div className="panel">
+        <div className="panel-title">Data management</div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 12 }}>
+          Replaces the small starter airport list with the free OurAirports global database
+          (~19,000 real airports, including small training airfields). Safe to run more than
+          once — existing entries are matched and updated by ICAO code, nothing is duplicated.
+        </p>
+        <button onClick={handleImportAirports} disabled={importing}>
+          {importing ? 'Importing… this can take up to a minute' : 'Import full airport database'}
+        </button>
+        {importResult && (
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-ok, #4ade80)' }}>
+            Done — {importResult.total_airports_in_db} airports now in the database
+            ({importResult.india_airports_in_db} in India).
+          </div>
+        )}
+        {importError && (
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-bad, #f87171)' }}>
+            {importError}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

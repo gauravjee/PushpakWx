@@ -65,3 +65,19 @@ export function getUsers({ page = 1, limit = 25, q = '' } = {}) {
 export function getActivity(limit = 50) {
   return request(`/admin/activity?limit=${limit}`);
 }
+
+export function importAirports() {
+  // Fetching + processing ~19k airports server-side can take a little
+  // while, so give this one a longer timeout than the default request().
+  const token = getToken();
+  return fetch(`${API}/admin/import-airports`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${res.status})`);
+    }
+    return res.json();
+  });
+}
