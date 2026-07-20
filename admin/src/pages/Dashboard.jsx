@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getOverview, importAirports } from '../api'
+import { getOverview, importAirports, importRunways } from '../api'
 import StatCard from '../components/StatCard'
 import BarChart from '../components/BarChart'
 
@@ -9,6 +9,9 @@ export default function Dashboard() {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
   const [importError, setImportError] = useState('')
+  const [importingRunways, setImportingRunways] = useState(false)
+  const [runwayResult, setRunwayResult] = useState(null)
+  const [runwayError, setRunwayError] = useState('')
 
   useEffect(() => {
     getOverview().then(setData).catch((e) => setError(e.message))
@@ -25,6 +28,20 @@ export default function Dashboard() {
       setImportError(e.message)
     } finally {
       setImporting(false)
+    }
+  }
+
+  async function handleImportRunways() {
+    setImportingRunways(true)
+    setRunwayError('')
+    setRunwayResult(null)
+    try {
+      const result = await importRunways()
+      setRunwayResult(result)
+    } catch (e) {
+      setRunwayError(e.message)
+    } finally {
+      setImportingRunways(false)
     }
   }
 
@@ -93,6 +110,27 @@ export default function Dashboard() {
         {importError && (
           <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-bad, #f87171)' }}>
             {importError}
+          </div>
+        )}
+
+        <div style={{ height: 1, background: 'var(--line)', margin: '16px 0' }} />
+
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 12 }}>
+          Adds real runway data (~41,000 airports) so the runway wind calculator shows an
+          airport's actual runways instead of a generic manual entry. Run this after importing
+          airports above. Safe to re-run.
+        </p>
+        <button onClick={handleImportRunways} disabled={importingRunways}>
+          {importingRunways ? 'Importing… this can take up to a minute' : 'Import runway database'}
+        </button>
+        {runwayResult && (
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-ok, #4ade80)' }}>
+            Done — {runwayResult.total_airports_with_runways} airports now have runway data.
+          </div>
+        )}
+        {runwayError && (
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-bad, #f87171)' }}>
+            {runwayError}
           </div>
         )}
       </div>

@@ -379,6 +379,7 @@ export default function Dashboard() {
             windSpeedKt={windKt}
             gustKt={gustKt}
             unit={prefs.wind_unit}
+            icao={loc?.icao}
           />
         </View>
 

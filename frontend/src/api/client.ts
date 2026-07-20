@@ -141,6 +141,10 @@ export const api = {
   getPrefs: () => request<Prefs>('/prefs', {}, true),
   updatePrefs: (p: Prefs) =>
     request<Prefs>('/prefs', { method: 'PUT', body: JSON.stringify(p) }, true),
+  getRunways: (icao: string) =>
+    request<{ icao: string; runway_ends: { ident: string; heading_true: number; length_ft: number | null; surface: string | null }[] }>(
+      `/airports/${encodeURIComponent(icao)}/runways`
+    ),
   getMetar: (icao: string) =>
     request<{
       icao: string;

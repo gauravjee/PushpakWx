@@ -81,3 +81,17 @@ export function importAirports() {
     return res.json();
   });
 }
+
+export function importRunways() {
+  const token = getToken();
+  return fetch(`${API}/admin/import-runways`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${res.status})`);
+    }
+    return res.json();
+  });
+}
