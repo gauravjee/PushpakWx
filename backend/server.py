@@ -1145,6 +1145,90 @@ async def admin_activity(admin: dict = Depends(get_current_admin), limit: int = 
         e["user_email"] = email_by_id.get(e.get("user_id"))
     return {"items": events}
 
+# ============= Airport Data Import (one-time admin action) =============
+# Add this near the top of server.py, alongside your other imports:
+#   import csv
+#   import io
+#   from pymongo import UpdateOne
+
+OURAIRPORTS_CSV_URL = "https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/airports.csv"
+
+def _extract_icao(row: dict) -> Optional[str]:
+    """Prefer the dedicated ICAO column, fall back to GPS code or the row's
+    own ident if it already looks like a 4-letter ICAO code."""
+    if row.get("icao_code"):
+        return row["icao_code"].strip().upper()
+    gps = row.get("gps_code") or ""
+    if len(gps) == 4 and gps.isalpha():
+        return gps.strip().upper()
+    ident = row.get("ident") or ""
+    if len(ident) == 4 and ident.isalpha():
+        return ident.strip().upper()
+    return None
+
+@api_router.post("/admin/import-airports")
+async def admin_import_airports(admin: dict = Depends(get_current_admin)):
+    """
+    One-time (or occasional) import of the free OurAirports global database
+    (~19,000 real airports, including small training airfields) to replace
+    the small ~46-airport hardcoded seed list. Safe to re-run — it upserts
+    by ICAO code, so existing favorites/saved data referencing an ICAO are
+    unaffected either way.
+    """
+    async with httpx.AsyncClient(timeout=60.0) as http_client:
+        r = await http_client.get(
+            OURAIRPORTS_CSV_URL,
+            headers={"User-Agent": "PushpakWX/1.2 (airport data import)"},
+        )
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail="Could not fetch airport data source")
+        text = r.text
+
+    reader = csv.DictReader(io.StringIO(text))
+    seen = set()
+    docs = []
+    for row in reader:
+        if row.get("type") not in ("large_airport", "medium_airport", "small_airport"):
+            continue
+        icao = _extract_icao(row)
+        if not icao or icao in seen:
+            continue
+        try:
+            lat = float(row["latitude_deg"])
+            lon = float(row["longitude_deg"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        seen.add(icao)
+        elev = row.get("elevation_ft")
+        docs.append({
+            "icao": icao,
+            "iata": (row.get("iata_code") or "").strip().upper() or None,
+            "name": (row.get("name") or "").strip(),
+            "city": (row.get("municipality") or "").strip() or None,
+            "country": (row.get("iso_country") or "").strip() or None,
+            "lat": round(lat, 4),
+            "lon": round(lon, 4),
+            "elevation_ft": int(float(elev)) if elev else None,
+        })
+
+    # Upsert in batches of 1000 to keep each bulk operation reasonably sized
+    imported = 0
+    batch_size = 1000
+    for i in range(0, len(docs), batch_size):
+        batch = docs[i:i + batch_size]
+        ops = [UpdateOne({"icao": d["icao"]}, {"$set": d}, upsert=True) for d in batch]
+        result = await db.airports.bulk_write(ops, ordered=False)
+        imported += result.upserted_count + result.modified_count
+
+    total_now = await db.airports.count_documents({})
+    india_now = await db.airports.count_documents({"country": "IN"})
+    return {
+        "processed": len(docs),
+        "imported_or_updated": imported,
+        "total_airports_in_db": total_now,
+        "india_airports_in_db": india_now,
+    }
+
 
 app.include_router(api_router)
 
