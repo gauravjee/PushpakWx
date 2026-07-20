@@ -1230,6 +1230,95 @@ async def admin_import_airports(admin: dict = Depends(get_current_admin)):
     }
 
 
+# ============= Runway Data Import + Lookup =============
+# No new imports needed beyond what airport import already added
+# (csv, io are already imported for that feature).
+
+RUNWAYS_CSV_URL = "https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/runways.csv"
+
+def _build_runway_ends(row: dict) -> list:
+    """Each raw runway row represents one physical strip with two usable
+    ends (e.g. 09/27) — split it into two selectable entries."""
+    ends = []
+    length_ft = None
+    if row.get("length_ft"):
+        try:
+            length_ft = int(float(row["length_ft"]))
+        except (ValueError, TypeError):
+            length_ft = None
+    surface = (row.get("surface") or "").strip() or None
+    for prefix in ("le_", "he_"):
+        ident = row.get(f"{prefix}ident")
+        if not ident:
+            continue
+        heading_raw = row.get(f"{prefix}heading_degT")
+        try:
+            heading_val = float(heading_raw) if heading_raw else None
+        except (ValueError, TypeError):
+            heading_val = None
+        ends.append({
+            "ident": ident.strip().upper(),
+            "heading_true": heading_val,
+            "length_ft": length_ft,
+            "surface": surface,
+        })
+    return ends
+
+@api_router.post("/admin/import-runways")
+async def admin_import_runways(admin: dict = Depends(get_current_admin)):
+    """
+    One-time (or occasional) import of real runway data (~41,000 airports
+    with runway info) so the runway wind calculator can show actual
+    available runways instead of a generic manual entry. Safe to re-run —
+    upserts by ICAO, replacing that airport's runway list each time.
+    """
+    async with httpx.AsyncClient(timeout=60.0) as http_client:
+        r = await http_client.get(
+            RUNWAYS_CSV_URL,
+            headers={"User-Agent": "PushpakWX/1.2 (runway data import)"},
+        )
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail="Could not fetch runway data source")
+        text = r.text
+
+    reader = csv.DictReader(io.StringIO(text))
+    by_airport: dict = {}
+    for row in reader:
+        if row.get("closed") == "1":
+            continue
+        icao = (row.get("airport_ident") or "").strip().upper()
+        if not icao:
+            continue
+        by_airport.setdefault(icao, []).extend(_build_runway_ends(row))
+
+    docs = [{"icao": icao, "runway_ends": ends} for icao, ends in by_airport.items()]
+
+    imported = 0
+    batch_size = 1000
+    for i in range(0, len(docs), batch_size):
+        batch = docs[i:i + batch_size]
+        ops = [UpdateOne({"icao": d["icao"]}, {"$set": d}, upsert=True) for d in batch]
+        result = await db.runways.bulk_write(ops, ordered=False)
+        imported += result.upserted_count + result.modified_count
+
+    total_now = await db.runways.count_documents({})
+    return {
+        "processed": len(docs),
+        "imported_or_updated": imported,
+        "total_airports_with_runways": total_now,
+    }
+
+@api_router.get("/airports/{icao}/runways")
+async def get_airport_runways(icao: str):
+    """Returns real runway ends for an airport, or an empty list if we
+    don't have runway data for it — the frontend falls back to manual
+    entry gracefully in that case."""
+    doc = await db.runways.find_one({"icao": icao.upper()}, {"_id": 0})
+    if not doc:
+        return {"icao": icao.upper(), "runway_ends": []}
+    return doc
+
+
 app.include_router(api_router)
 
 app.add_middleware(
