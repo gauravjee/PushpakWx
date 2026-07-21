@@ -1337,15 +1337,32 @@ async def my_top_airports(user: dict = Depends(get_current_user), limit: int = Q
     return {"items": [{"icao": icao, "count": count} for icao, count in counter.most_common(limit)]}
 
 # Adding code for manual airport addtions using admin panel
+
+class AirportWithRunways(Airport):
+    runway_idents: List[str] = []
+
 @api_router.post("/admin/airports")
-async def admin_add_airport(payload: Airport, admin: dict = Depends(get_current_admin)):
-    """Manually add or update a single airport — for training airfields and
-    small strips that aren't in the free OurAirports dataset (e.g. some
-    Indian training airfields only have an informal/local ICAO-style code)."""
-    doc = payload.dict()
+async def admin_add_airport(payload: AirportWithRunways, admin: dict = Depends(get_current_admin)):
+    """Manually add or update a single airport, optionally with its runway
+    idents — for training airfields and small strips that aren't in the
+    free OurAirports dataset (e.g. some Indian training airfields only
+    have an informal/local ICAO-style code, or no runway data on file)."""
+    doc = payload.dict(exclude={"runway_idents"})
     doc["icao"] = doc["icao"].strip().upper()
     await db.airports.update_one({"icao": doc["icao"]}, {"$set": doc}, upsert=True)
-    return {"ok": True, "icao": doc["icao"]}
+
+    if payload.runway_idents:
+        runway_ends = [
+            {"ident": ident.strip().upper(), "heading_true": None, "length_ft": None, "surface": None}
+            for ident in payload.runway_idents if ident.strip()
+        ]
+        await db.runways.update_one(
+            {"icao": doc["icao"]},
+            {"$set": {"icao": doc["icao"], "runway_ends": runway_ends}},
+            upsert=True,
+        )
+
+    return {"ok": True, "icao": doc["icao"], "runways_added": len(payload.runway_idents)}
 
 app.include_router(api_router)
 

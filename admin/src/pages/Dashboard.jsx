@@ -3,7 +3,7 @@ import { getOverview, importAirports, importRunways, addAirportManually } from '
 import StatCard from '../components/StatCard'
 import BarChart from '../components/BarChart'
 
-const EMPTY_AIRPORT = { icao: '', name: '', city: '', country: '', lat: '', lon: '', elevation_ft: '' }
+const EMPTY_AIRPORT = { icao: '', name: '', city: '', country: '', lat: '', lon: '', elevation_ft: '', runway_idents: '' }
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
@@ -65,6 +65,10 @@ export default function Dashboard() {
         lat: parseFloat(newAirport.lat),
         lon: parseFloat(newAirport.lon),
         elevation_ft: newAirport.elevation_ft ? parseInt(newAirport.elevation_ft, 10) : null,
+        runway_idents: newAirport.runway_idents
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
       }
       if (!payload.icao || !payload.name || isNaN(payload.lat) || isNaN(payload.lon)) {
         throw new Error('ICAO code, name, latitude, and longitude are all required.')
@@ -222,13 +226,20 @@ export default function Dashboard() {
             value={newAirport.elevation_ft}
             onChange={(e) => setNewAirport({ ...newAirport, elevation_ft: e.target.value })}
           />
+          <input
+            placeholder="Runway idents, comma-separated (e.g. 09, 27)"
+            value={newAirport.runway_idents}
+            onChange={(e) => setNewAirport({ ...newAirport, runway_idents: e.target.value })}
+            style={{ gridColumn: '1 / -1' }}
+          />
           <button type="submit" disabled={savingAirport} style={{ gridColumn: '1 / -1' }}>
             {savingAirport ? 'Saving…' : 'Add / Update Airport'}
           </button>
         </form>
         {airportSaveResult && (
           <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-ok, #4ade80)' }}>
-            Saved — {airportSaveResult.icao} is now searchable in the app.
+            Saved — {airportSaveResult.icao} is now searchable in the app
+            {airportSaveResult.runways_added > 0 ? ` with ${airportSaveResult.runways_added} runway(s).` : '.'}
           </div>
         )}
         {airportSaveError && (
