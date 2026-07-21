@@ -1321,6 +1321,20 @@ async def get_airport_runways(icao: str):
         return {"icao": icao.upper(), "runway_ends": []}
     return doc
 
+# Adding the top airport searched 
+
+@api_router.get("/me/top-airports")
+async def my_top_airports(user: dict = Depends(get_current_user), limit: int = Query(3, ge=1, le=10)):
+    """Airports this pilot has checked weather for most often (METAR/TAF lookups)."""
+    from collections import Counter
+
+    cursor = db.events.find(
+        {"user_id": user["id"], "type": {"$in": ["metar", "taf"]}},
+        {"_id": 0, "meta": 1},
+    )
+    events = await cursor.to_list(100000)
+    counter = Counter(e["meta"]["icao"] for e in events if e.get("meta", {}).get("icao"))
+    return {"items": [{"icao": icao, "count": count} for icao, count in counter.most_common(limit)]}
 
 app.include_router(api_router)
 

@@ -61,6 +61,10 @@ export function getFlights() {
   return request('/flights')
 }
 
+export function getTopCheckedAirports(limit = 3) {
+  return request(`/me/top-airports?limit=${limit}`)
+}
+
 export function getFlight(id) {
   return request(`/flights/${id}`)
 }

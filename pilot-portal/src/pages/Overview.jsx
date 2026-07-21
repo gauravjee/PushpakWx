@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getFlights, getStoredUser, getStoredPreviousLogin } from '../api'
+import { getFlights, getStoredUser, getStoredPreviousLogin, getTopCheckedAirports } from '../api'
 
 function formatDateTime(iso) {
   if (!iso) return null
@@ -21,23 +21,38 @@ function formatHours(totalSeconds) {
 export default function Overview() {
   const [flights, setFlights] = useState(null)
   const [error, setError] = useState('')
+  const [topChecked, setTopChecked] = useState(null)
   const user = getStoredUser()
   const previousLogin = getStoredPreviousLogin()
   const navigate = useNavigate()
 
   useEffect(() => {
     getFlights().then(setFlights).catch((e) => setError(e.message))
+    getTopCheckedAirports(3).then((res) => setTopChecked(res.items)).catch(() => setTopChecked([]))
   }, [])
 
   const displayName = user?.full_name || user?.email || 'Pilot'
 
   let stats = null
+  let topTraveled = null
   if (flights) {
     const totalDistance = flights.reduce((sum, f) => sum + (f.distance_nm || 0), 0)
     const totalDuration = flights.reduce((sum, f) => sum + (f.duration_s || 0), 0)
     const maxAlt = flights.reduce((max, f) => Math.max(max, f.max_alt_ft || 0), 0)
     const mostRecent = flights[0]
     stats = { totalFlights: flights.length, totalDistance, totalDuration, maxAlt, mostRecent }
+
+    const counts = {}
+    flights.forEach((f) => {
+      ;[f.dep_icao, f.arr_icao].forEach((icao) => {
+        if (!icao) return
+        counts[icao] = (counts[icao] || 0) + 1
+      })
+    })
+    topTraveled = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([icao, count]) => ({ icao, count }))
   }
 
   return (
@@ -70,6 +85,38 @@ export default function Overview() {
             <div className="detail-stat">
               <div className="detail-stat-value">{Math.round(stats.maxAlt)}</div>
               <div className="detail-stat-label">Highest Alt (ft)</div>
+            </div>
+          </div>
+
+          <div className="two-col-row">
+            <div className="panel">
+              <div className="panel-title">Most Checked Airports</div>
+              {topChecked === null && <div className="loading-state">Loading…</div>}
+              {topChecked && topChecked.length === 0 && (
+                <div className="empty-state">No weather lookups yet.</div>
+              )}
+              {topChecked && topChecked.map((a, i) => (
+                <div className="rank-row" key={a.icao}>
+                  <span className="rank-num">{i + 1}</span>
+                  <span className="rank-code">{a.icao}</span>
+                  <span className="rank-count">{a.count} lookup{a.count === 1 ? '' : 's'}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="panel">
+              <div className="panel-title">Most Traveled Airports</div>
+              {!topTraveled && <div className="loading-state">Loading…</div>}
+              {topTraveled && topTraveled.length === 0 && (
+                <div className="empty-state">No flights logged yet.</div>
+              )}
+              {topTraveled && topTraveled.map((a, i) => (
+                <div className="rank-row" key={a.icao}>
+                  <span className="rank-num">{i + 1}</span>
+                  <span className="rank-code">{a.icao}</span>
+                  <span className="rank-count">{a.count} flight{a.count === 1 ? '' : 's'}</span>
+                </div>
+              ))}
             </div>
           </div>
 
