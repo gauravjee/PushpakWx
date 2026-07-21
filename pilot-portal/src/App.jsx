@@ -50,6 +50,7 @@ export default function App() {
   return (
     <HashRouter>
       <div>
+        <div className="watermark" />
         <Topbar onLogout={() => { logout(); setLoggedIn(false) }} />
         <NavTabs />
         <div className="main">

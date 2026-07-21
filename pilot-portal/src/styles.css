@@ -66,11 +66,27 @@ input {
 }
 input:focus { outline: none; border-color: var(--brand); }
 
-.topbar-user { font-size: 13px; color: var(--on-surface-2); font-family: var(--font-mono); }
+.topbar-user { font-size: 16px; font-weight: 600; color: var(--on-surface); font-family: var(--font-mono); }
+
+.watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 640px;
+  height: 640px;
+  background-image: url('/logo.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 0;
+}
 
 .nav-tabs {
   display: flex; gap: 4px; padding: 0 28px; border-bottom: 1px solid var(--divider);
-  background: var(--surface-2);
+  background: var(--surface-2); position: relative; z-index: 1;
 }
 .nav-tab {
   padding: 12px 18px; font-size: 13px; font-weight: 700; letter-spacing: 0.03em;
@@ -87,13 +103,14 @@ input:focus { outline: none; border-color: var(--brand); }
 .app-shell { display: flex; min-height: 100vh; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 28px; border-bottom: 1px solid var(--divider);
+  padding: 22px 32px; border-bottom: 2px solid var(--brand);
+  position: relative; z-index: 1; background: var(--surface);
 }
 .topbar-brand { display: flex; align-items: center; gap: 12px; }
-.topbar-logo { width: 32px; height: 32px; border-radius: 8px; }
-.topbar-title { font-family: var(--font-display); font-weight: 700; font-size: 17px; }
+.topbar-logo { width: 38px; height: 38px; border-radius: 9px; }
+.topbar-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; }
 .topbar-sub { font-size: 10px; color: var(--on-surface-3); letter-spacing: 0.12em; text-transform: uppercase; }
-.main { flex: 1; padding: 28px; max-width: 1100px; margin: 0 auto; width: 100%; }
+.main { flex: 1; padding: 28px; max-width: 1100px; margin: 0 auto; width: 100%; position: relative; z-index: 1; }
 
 .page-title { font-family: var(--font-display); font-size: 26px; font-weight: 700; margin: 0 0 6px; }
 .page-sub { color: var(--on-surface-2); font-size: 14px; margin: 0 0 24px; }
