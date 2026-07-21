@@ -20,7 +20,7 @@ function Topbar({ onLogout }) {
           </div>
         </div>
       </Link>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div className="topbar-actions">
         {user && <div className="topbar-user">{user.full_name || user.email}</div>}
         <button className="secondary" onClick={onLogout}>Sign out</button>
       </div>

@@ -66,7 +66,7 @@ input {
 }
 input:focus { outline: none; border-color: var(--brand); }
 
-.topbar-user { font-size: 16px; font-weight: 600; color: var(--on-surface); font-family: var(--font-mono); }
+.topbar-user { font-size: 16px; font-weight: 600; color: var(--on-surface); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 
 .watermark {
   position: fixed;
@@ -106,9 +106,10 @@ input:focus { outline: none; border-color: var(--brand); }
   padding: 22px 32px; border-bottom: 2px solid var(--brand);
   position: relative; z-index: 1; background: var(--surface);
 }
-.topbar-brand { display: flex; align-items: center; gap: 12px; }
-.topbar-logo { width: 38px; height: 38px; border-radius: 9px; }
-.topbar-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; }
+.topbar-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.topbar-logo { width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0; }
+.topbar-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-actions { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
 .topbar-sub { font-size: 10px; color: var(--on-surface-3); letter-spacing: 0.12em; text-transform: uppercase; }
 .main { flex: 1; padding: 28px; max-width: 1100px; margin: 0 auto; width: 100%; position: relative; z-index: 1; }
 
@@ -165,3 +166,48 @@ input:focus { outline: none; border-color: var(--brand); }
 .download-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 
 .attribution { font-size: 10px; color: var(--on-surface-3); text-align: right; margin-top: 6px; }
+
+/* ===== Responsive ===== */
+
+/* Tablet and below: tighten spacing a bit */
+@media (max-width: 900px) {
+  .main { padding: 22px 18px; }
+  .topbar { padding: 18px 22px; }
+}
+
+/* Phones: stack the topbar into two rows instead of squeezing everything
+   onto one, and reflow cards/lists to a single column. */
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 12px;
+    padding: 14px 16px;
+  }
+  .topbar-brand { flex: 1 1 auto; min-width: 0; }
+  .topbar-title { font-size: 16px; }
+  .topbar-sub { font-size: 9px; }
+  .topbar-logo { width: 30px; height: 30px; }
+  .topbar-actions {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    order: 3;
+  }
+  .topbar-user { font-size: 13px; max-width: 55vw; }
+  button { padding: 9px 16px; font-size: 12px; white-space: nowrap; }
+
+  .nav-tabs { padding: 0 12px; overflow-x: auto; }
+  .nav-tab { padding: 10px 12px; font-size: 12px; white-space: nowrap; }
+
+  .main { padding: 18px 14px; }
+  .page-title { font-size: 21px; }
+
+  .flight-card { flex-direction: column; align-items: stretch; gap: 10px; }
+  .flight-stats { width: 100%; justify-content: space-between; gap: 0; text-align: left; }
+
+  .detail-stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .map-container { height: 260px; }
+
+  .login-card { width: 100%; max-width: 340px; padding: 28px 24px; }
+
+  .watermark { width: 380px; height: 380px; }
+}
