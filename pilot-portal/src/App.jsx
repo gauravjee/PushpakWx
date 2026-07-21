@@ -1,11 +1,14 @@
 import { useState } from 'react'
-import { HashRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
-import { isLoggedIn, logout } from './api'
+import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
+import { isLoggedIn, logout, getStoredUser } from './api'
 import Login from './pages/Login'
+import Overview from './pages/Overview'
 import FlightsList from './pages/FlightsList'
 import FlightDetail from './pages/FlightDetail'
+import FlightsMap from './pages/FlightsMap'
 
 function Topbar({ onLogout }) {
+  const user = getStoredUser()
   return (
     <div className="topbar">
       <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -17,7 +20,22 @@ function Topbar({ onLogout }) {
           </div>
         </div>
       </Link>
-      <button className="secondary" onClick={onLogout}>Sign out</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {user && <div className="topbar-user">{user.full_name || user.email}</div>}
+        <button className="secondary" onClick={onLogout}>Sign out</button>
+      </div>
+    </div>
+  )
+}
+
+function NavTabs() {
+  const location = useLocation()
+  const isActive = (path) => (path === '/' ? location.pathname === '/' : location.pathname.startsWith(path))
+  return (
+    <div className="nav-tabs">
+      <Link to="/" className={`nav-tab ${isActive('/') ? 'active' : ''}`}>Overview</Link>
+      <Link to="/logbook" className={`nav-tab ${isActive('/logbook') ? 'active' : ''}`}>Logbook</Link>
+      <Link to="/maps" className={`nav-tab ${isActive('/maps') ? 'active' : ''}`}>Maps</Link>
     </div>
   )
 }
@@ -33,10 +51,13 @@ export default function App() {
     <HashRouter>
       <div>
         <Topbar onLogout={() => { logout(); setLoggedIn(false) }} />
+        <NavTabs />
         <div className="main">
           <Routes>
-            <Route path="/" element={<FlightsList />} />
+            <Route path="/" element={<Overview />} />
+            <Route path="/logbook" element={<FlightsList />} />
             <Route path="/flights/:id" element={<FlightDetail />} />
+            <Route path="/maps" element={<FlightsMap />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

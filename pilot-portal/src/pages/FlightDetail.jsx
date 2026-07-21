@@ -142,7 +142,7 @@ export default function FlightDetail() {
 
   return (
     <div>
-      <Link to="/" className="back-link">← Back to flights</Link>
+      <Link to="/logbook" className="back-link">← Back to flights</Link>
       <h1 className="page-title">{flight.dep_icao || '???'} → {flight.arr_icao || '???'}</h1>
       <p className="page-sub">{new Date(flight.started_at).toLocaleString()}</p>
 

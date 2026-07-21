@@ -12,6 +12,8 @@ export function isLoggedIn() {
 }
 export function logout() {
   setToken(null)
+  localStorage.removeItem('pushpakwx_user')
+  localStorage.removeItem('pushpakwx_previous_login')
 }
 
 async function request(path, options = {}, auth = true) {
@@ -34,7 +36,21 @@ export async function login(email, password) {
     body: JSON.stringify({ email, password }),
   }, false)
   setToken(data.access_token)
+  localStorage.setItem('pushpakwx_user', JSON.stringify(data.user))
+  localStorage.setItem('pushpakwx_previous_login', data.previous_login || '')
   return data.user
+}
+
+export function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem('pushpakwx_user') || 'null')
+  } catch {
+    return null
+  }
+}
+
+export function getStoredPreviousLogin() {
+  return localStorage.getItem('pushpakwx_previous_login') || null
 }
 
 export function getMe() {

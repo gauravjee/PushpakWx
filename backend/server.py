@@ -88,6 +88,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserPublic
+     previous_login: Optional[str] = None
 
 class Airport(BaseModel):
     icao: str
@@ -457,12 +458,14 @@ async def login(request: Request, payload: UserLogin):
             status_code=403,
             detail="Email not verified. A new code has been sent to your email.",
         )
+    previous_login = user.get("last_login")
     token = create_access_token(user["id"], user["email"])
     await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}})
     await log_event("login", user_id=user["id"])
     return Token(
-        access_token=token,
-        user=UserPublic(id=user["id"], email=user["email"], full_name=user.get("full_name"), created_at=user["created_at"], email_verified=True),
+    access_token=token,
+    user=UserPublic(id=user["id"], email=user["email"], full_name=user.get("full_name"), created_at=user["created_at"], email_verified=True),
+    previous_login=previous_login,
     )
 
 @api_router.post("/auth/forgot-password")
