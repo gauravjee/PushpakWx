@@ -88,7 +88,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserPublic
-     previous_login: Optional[str] = None
+    previous_login: Optional[str] = None
 
 class Airport(BaseModel):
     icao: str
