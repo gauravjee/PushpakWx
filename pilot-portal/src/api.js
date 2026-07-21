@@ -65,6 +65,10 @@ export function getTopCheckedAirports(limit = 3) {
   return request(`/me/top-airports?limit=${limit}`)
 }
 
+export function getAirport(icao) {
+  return request(`/airports/${icao}`, {}, false).catch(() => null)
+}
+
 export function getFlight(id) {
   return request(`/flights/${id}`)
 }

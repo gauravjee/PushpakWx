@@ -1336,6 +1336,17 @@ async def my_top_airports(user: dict = Depends(get_current_user), limit: int = Q
     counter = Counter(e["meta"]["icao"] for e in events if e.get("meta", {}).get("icao"))
     return {"items": [{"icao": icao, "count": count} for icao, count in counter.most_common(limit)]}
 
+# Adding code for manual airport addtions using admin panel
+@api_router.post("/admin/airports")
+async def admin_add_airport(payload: Airport, admin: dict = Depends(get_current_admin)):
+    """Manually add or update a single airport — for training airfields and
+    small strips that aren't in the free OurAirports dataset (e.g. some
+    Indian training airfields only have an informal/local ICAO-style code)."""
+    doc = payload.dict()
+    doc["icao"] = doc["icao"].strip().upper()
+    await db.airports.update_one({"icao": doc["icao"]}, {"$set": doc}, upsert=True)
+    return {"ok": True, "icao": doc["icao"]}
+
 app.include_router(api_router)
 
 app.add_middleware(

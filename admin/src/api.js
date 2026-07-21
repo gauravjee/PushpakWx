@@ -95,3 +95,7 @@ export function importRunways() {
     return res.json();
   });
 }
+
+export function addAirportManually(payload) {
+  return request('/admin/airports', { method: 'POST', body: JSON.stringify(payload) });
+}

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { getOverview, importAirports, importRunways } from '../api'
+import { getOverview, importAirports, importRunways, addAirportManually } from '../api'
 import StatCard from '../components/StatCard'
 import BarChart from '../components/BarChart'
+
+const EMPTY_AIRPORT = { icao: '', name: '', city: '', country: '', lat: '', lon: '', elevation_ft: '' }
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
@@ -12,6 +14,10 @@ export default function Dashboard() {
   const [importingRunways, setImportingRunways] = useState(false)
   const [runwayResult, setRunwayResult] = useState(null)
   const [runwayError, setRunwayError] = useState('')
+  const [newAirport, setNewAirport] = useState(EMPTY_AIRPORT)
+  const [savingAirport, setSavingAirport] = useState(false)
+  const [airportSaveResult, setAirportSaveResult] = useState(null)
+  const [airportSaveError, setAirportSaveError] = useState('')
 
   useEffect(() => {
     getOverview().then(setData).catch((e) => setError(e.message))
@@ -42,6 +48,34 @@ export default function Dashboard() {
       setRunwayError(e.message)
     } finally {
       setImportingRunways(false)
+    }
+  }
+
+  async function handleAddAirport(e) {
+    e.preventDefault()
+    setSavingAirport(true)
+    setAirportSaveError('')
+    setAirportSaveResult(null)
+    try {
+      const payload = {
+        icao: newAirport.icao.trim().toUpperCase(),
+        name: newAirport.name.trim(),
+        city: newAirport.city.trim() || null,
+        country: newAirport.country.trim() || null,
+        lat: parseFloat(newAirport.lat),
+        lon: parseFloat(newAirport.lon),
+        elevation_ft: newAirport.elevation_ft ? parseInt(newAirport.elevation_ft, 10) : null,
+      }
+      if (!payload.icao || !payload.name || isNaN(payload.lat) || isNaN(payload.lon)) {
+        throw new Error('ICAO code, name, latitude, and longitude are all required.')
+      }
+      const result = await addAirportManually(payload)
+      setAirportSaveResult(result)
+      setNewAirport(EMPTY_AIRPORT)
+    } catch (err) {
+      setAirportSaveError(err.message)
+    } finally {
+      setSavingAirport(false)
     }
   }
 
@@ -131,6 +165,75 @@ export default function Dashboard() {
         {runwayError && (
           <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-bad, #f87171)' }}>
             {runwayError}
+          </div>
+        )}
+
+        <div style={{ height: 1, background: 'var(--line)', margin: '16px 0' }} />
+
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 12 }}>
+          Some smaller training airfields (especially in India) aren't in the free public
+          dataset at all — usually because they don't have an official ICAO code on file, even
+          if the flying community uses one informally. Add those here manually, with coordinates
+          you look up from a chart or the AIP. Safe to re-run for the same ICAO — it updates
+          rather than duplicates.
+        </p>
+        <form onSubmit={handleAddAirport} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, maxWidth: 480 }}>
+          <input
+            placeholder="ICAO code (e.g. VASR)"
+            value={newAirport.icao}
+            onChange={(e) => setNewAirport({ ...newAirport, icao: e.target.value })}
+            required
+          />
+          <input
+            placeholder="Airport name"
+            value={newAirport.name}
+            onChange={(e) => setNewAirport({ ...newAirport, name: e.target.value })}
+            required
+          />
+          <input
+            placeholder="City"
+            value={newAirport.city}
+            onChange={(e) => setNewAirport({ ...newAirport, city: e.target.value })}
+          />
+          <input
+            placeholder="Country (e.g. IN)"
+            value={newAirport.country}
+            onChange={(e) => setNewAirport({ ...newAirport, country: e.target.value })}
+          />
+          <input
+            placeholder="Latitude"
+            type="number"
+            step="any"
+            value={newAirport.lat}
+            onChange={(e) => setNewAirport({ ...newAirport, lat: e.target.value })}
+            required
+          />
+          <input
+            placeholder="Longitude"
+            type="number"
+            step="any"
+            value={newAirport.lon}
+            onChange={(e) => setNewAirport({ ...newAirport, lon: e.target.value })}
+            required
+          />
+          <input
+            placeholder="Elevation (ft, optional)"
+            type="number"
+            value={newAirport.elevation_ft}
+            onChange={(e) => setNewAirport({ ...newAirport, elevation_ft: e.target.value })}
+          />
+          <button type="submit" disabled={savingAirport} style={{ gridColumn: '1 / -1' }}>
+            {savingAirport ? 'Saving…' : 'Add / Update Airport'}
+          </button>
+        </form>
+        {airportSaveResult && (
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-ok, #4ade80)' }}>
+            Saved — {airportSaveResult.icao} is now searchable in the app.
+          </div>
+        )}
+        {airportSaveError && (
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--accent-bad, #f87171)' }}>
+            {airportSaveError}
           </div>
         )}
       </div>

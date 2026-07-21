@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getFlights, getStoredUser, getStoredPreviousLogin, getTopCheckedAirports } from '../api'
+import { getFlights, getStoredUser, getStoredPreviousLogin, getTopCheckedAirports, getAirport } from '../api'
 
 function formatDateTime(iso) {
   if (!iso) return null
@@ -22,6 +22,7 @@ export default function Overview() {
   const [flights, setFlights] = useState(null)
   const [error, setError] = useState('')
   const [topChecked, setTopChecked] = useState(null)
+  const [airportNames, setAirportNames] = useState({})
   const user = getStoredUser()
   const previousLogin = getStoredPreviousLogin()
   const navigate = useNavigate()
@@ -30,6 +31,28 @@ export default function Overview() {
     getFlights().then(setFlights).catch((e) => setError(e.message))
     getTopCheckedAirports(3).then((res) => setTopChecked(res.items)).catch(() => setTopChecked([]))
   }, [])
+
+  useEffect(() => {
+    const icaos = new Set()
+    if (topChecked) topChecked.forEach((a) => icaos.add(a.icao))
+    if (flights) {
+      flights.forEach((f) => {
+        if (f.dep_icao) icaos.add(f.dep_icao)
+        if (f.arr_icao) icaos.add(f.arr_icao)
+      })
+    }
+    const missing = [...icaos].filter((icao) => !(icao in airportNames))
+    if (missing.length === 0) return
+    Promise.all(missing.map((icao) => getAirport(icao).then((a) => [icao, a?.name || null])))
+      .then((pairs) => {
+        setAirportNames((prev) => {
+          const next = { ...prev }
+          pairs.forEach(([icao, name]) => { next[icao] = name })
+          return next
+        })
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topChecked, flights])
 
   const displayName = user?.full_name || user?.email || 'Pilot'
 
@@ -98,7 +121,10 @@ export default function Overview() {
               {topChecked && topChecked.map((a, i) => (
                 <div className="rank-row" key={a.icao}>
                   <span className="rank-num">{i + 1}</span>
-                  <span className="rank-code">{a.icao}</span>
+                  <span className="rank-code-wrap">
+                    <span className="rank-code">{a.icao}</span>
+                    {airportNames[a.icao] && <span className="rank-name">{airportNames[a.icao]}</span>}
+                  </span>
                   <span className="rank-count">{a.count} lookup{a.count === 1 ? '' : 's'}</span>
                 </div>
               ))}
@@ -113,7 +139,10 @@ export default function Overview() {
               {topTraveled && topTraveled.map((a, i) => (
                 <div className="rank-row" key={a.icao}>
                   <span className="rank-num">{i + 1}</span>
-                  <span className="rank-code">{a.icao}</span>
+                  <span className="rank-code-wrap">
+                    <span className="rank-code">{a.icao}</span>
+                    {airportNames[a.icao] && <span className="rank-name">{airportNames[a.icao]}</span>}
+                  </span>
                   <span className="rank-count">{a.count} flight{a.count === 1 ? '' : 's'}</span>
                 </div>
               ))}
