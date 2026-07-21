@@ -132,7 +132,7 @@ export const api = {
       `/geocode?q=${encodeURIComponent(q)}`,
     ),
   forecast: (lat: number, lon: number) =>
-    request<any>(`/weather/forecast?lat=${lat}&lon=${lon}`),
+    request<any>(`/weather/forecast?lat=${lat}&lon=${lon}`, {}, true),
   listFavorites: () => request<Favorite[]>('/favorites', {}, true),
   addFavorite: (payload: Omit<Favorite, 'id' | 'created_at'>) =>
     request<Favorite>('/favorites', { method: 'POST', body: JSON.stringify(payload) }, true),
@@ -160,7 +160,7 @@ export const api = {
       altimeter?: number | null;
       flight_category?: string | null;
       clouds?: { cover: string; base: number | null }[] | null;
-    }>(`/aviation/metar?icao=${encodeURIComponent(icao)}`),
+    }>(`/aviation/metar?icao=${encodeURIComponent(icao)}`, {}, true),
   getTaf: (icao: string) =>
     request<{
       icao: string;
@@ -169,7 +169,7 @@ export const api = {
       issue_time?: string | null;
       valid_from?: number | null;
       valid_to?: number | null;
-    }>(`/aviation/taf?icao=${encodeURIComponent(icao)}`),
+    }>(`/aviation/taf?icao=${encodeURIComponent(icao)}`, {}, true),
   createFlight: (payload: { started_at: string; ended_at: string; samples: FlightSample[]; note?: string }) =>
     request<FlightDetail>('/flights', { method: 'POST', body: JSON.stringify(payload) }, true),
   listFlights: () => request<FlightSummary[]>('/flights', {}, true),
