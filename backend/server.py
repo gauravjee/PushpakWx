@@ -12,6 +12,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 import uuid
+#---Adding import re first fix --- vulnurability check
+import re
 import random
 from datetime import datetime, timedelta, timezone
 import bcrypt
@@ -529,8 +531,8 @@ async def delete_account(payload: DeleteAccountRequest, user: dict = Depends(get
 # ---------- Airports ----------
 @api_router.get("/airports/search")
 async def airport_search(q: str = Query(..., min_length=1)):
-    q_up = q.strip().upper()
-    q_low = q.strip().lower()
+    q_up = re.escape(q.strip().upper())
+    q_low = re.escape(q.strip().lower())
     cursor = db.airports.find({
         "$or": [
             {"icao": {"$regex": f"^{q_up}", "$options": "i"}},
@@ -1276,9 +1278,10 @@ async def admin_users(
 ):
     query = {}
     if q:
+        q_safe = re.escape(q)
         query = {"$or": [
-            {"email": {"$regex": q, "$options": "i"}},
-            {"full_name": {"$regex": q, "$options": "i"}},
+            {"email": {"$regex": q_safe, "$options": "i"}},
+            {"full_name": {"$regex": q_safe, "$options": "i"}},
         ]}
     total = await db.users.count_documents(query)
     cursor = (
