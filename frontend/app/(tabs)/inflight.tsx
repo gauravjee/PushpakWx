@@ -55,6 +55,8 @@ export default function InFlight() {
   const hdgSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgRef = useRef<number>(0);
   const headingHistoryRef = useRef<number[]>([]);
+  const altitudeHistoryRef = useRef<{ alt: number; acc: number }[]>([]);
+  const [smoothAltFt, setSmoothAltFt] = useState<number | null>(null);
   const [webCompassNeedsPermission, setWebCompassNeedsPermission] = useState(false);
   const [webCompassUnavailable, setWebCompassUnavailable] = useState(false);
   const [headingAccuracy, setHeadingAccuracy] = useState<number | null>(null);
@@ -113,6 +115,30 @@ export default function InFlight() {
     let meanDeg = (meanRad * 180) / Math.PI;
     if (meanDeg < 0) meanDeg += 360;
     return meanDeg;
+  };
+
+  // Smooths GPS altitude, weighting each reading by its own reported
+  // accuracy (better accuracy = more influence) rather than a plain
+  // average. Phones stowed in a door pocket during flight often get
+  // consistently weaker GPS reception than one with a clear sky view, so
+  // a hard "reject poor readings" filter risks throwing away most data —
+  // weighting still lets poor readings contribute a little, just less.
+  // This smooths random noise; it can't correct a systematic offset
+  // (e.g. GPS ellipsoid height vs true sea level), which is a separate,
+  // hardware-level limitation no software fix fully overcomes.
+  const ALTITUDE_SMOOTHING_WINDOW = 5;
+  const smoothAltitude = (rawAltFt: number, accuracyFt: number | null): number => {
+    const history = altitudeHistoryRef.current;
+    history.push({ alt: rawAltFt, acc: accuracyFt && accuracyFt > 1 ? accuracyFt : 1 });
+    if (history.length > ALTITUDE_SMOOTHING_WINDOW) history.shift();
+    let weightedSum = 0;
+    let totalWeight = 0;
+    for (const { alt, acc } of history) {
+      const weight = 1 / acc;
+      weightedSum += alt * weight;
+      totalWeight += weight;
+    }
+    return totalWeight > 0 ? weightedSum / totalWeight : rawAltFt;
   };
 
   // Browser compass fallback for web (expo-location's watchHeadingAsync is
@@ -182,7 +208,10 @@ export default function InFlight() {
           (l) => {
             if (cancelled) return;
             setLoc(l);
-            const altFt = l.coords.altitude != null ? l.coords.altitude * 3.281 : 0;
+            const rawAltFt = l.coords.altitude != null ? l.coords.altitude * 3.281 : 0;
+            const rawAltAccFt = l.coords.altitudeAccuracy != null ? l.coords.altitudeAccuracy * 3.281 : null;
+            const altFt = l.coords.altitude != null ? smoothAltitude(rawAltFt, rawAltAccFt) : 0;
+            setSmoothAltFt(l.coords.altitude != null ? altFt : null);
             const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
 
@@ -481,7 +510,7 @@ export default function InFlight() {
   }
 
   // Compute display values
-  const altFt = loc?.coords.altitude != null ? loc.coords.altitude * 3.281 : null;
+  const altFt = smoothAltFt;
   const altAccFt = loc?.coords.altitudeAccuracy != null ? loc.coords.altitudeAccuracy * 3.281 : null;
   const speedKt = loc?.coords.speed != null && loc.coords.speed >= 0 ? loc.coords.speed * 1.9438 : 0;
   const posAcc = loc?.coords.accuracy ?? null;
