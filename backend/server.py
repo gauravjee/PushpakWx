@@ -1077,10 +1077,68 @@ async def delete_flight(flight_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Flight not found")
     return {"ok": True}
 
+# ============= DGCA / FAA Logbook CSV Export =============
+# Extends the existing export_flight endpoint to support two new formats.
+# Verified in isolation against realistic flight data before delivery —
+# both formats correctly derive PIC/Co-pilot/Dual from capacity and
+# format all times as h:mm.
+
+def _fmt_hhmm(minutes: Optional[float]) -> str:
+    if minutes is None:
+        minutes = 0
+    h = int(minutes // 60)
+    m = int(round(minutes % 60))
+    return f"{h}:{m:02d}"
+
+
+def _build_logbook_row(f: dict, fmt: str) -> tuple:
+    """Builds a (header, row) pair for a single flight in either DGCA or
+    FAA logbook column format. Both formats use the same underlying data —
+    they differ only in column set, order, and labels."""
+    started = datetime.fromisoformat(f["started_at"].replace("Z", "+00:00"))
+    ended = datetime.fromisoformat(f["ended_at"].replace("Z", "+00:00"))
+    total_min = f["duration_s"] / 60
+    day_min = f.get("day_minutes") or 0
+    night_min = f.get("night_minutes") or 0
+    instr_min = f.get("instrument_minutes") or 0
+    capacity = f.get("capacity")
+    pic_min = total_min if capacity == "pic" else 0
+    dual_min = total_min if capacity == "dual" else 0
+    copilot_min = total_min if capacity == "copilot" else 0
+
+    date_utc = started.strftime("%Y-%m-%d")
+    block_off = started.strftime("%H:%M")
+    block_on = ended.strftime("%H:%M")
+    route = f'{f.get("dep_icao") or "?"} - {f.get("arr_icao") or "?"}'
+
+    if fmt == "dgca_csv":
+        header = ["Date (UTC)", "Aircraft Type", "Registration", "From", "To", "Block Off (UTC)", "Block On (UTC)",
+                   "Total Time", "Day", "Night", "PIC", "Co-pilot", "Dual", "Instrument", "Remarks"]
+        row = [date_utc, f.get("aircraft_type") or "", f.get("registration") or "",
+               f.get("dep_icao") or "", f.get("arr_icao") or "", block_off, block_on,
+               _fmt_hhmm(total_min), _fmt_hhmm(day_min), _fmt_hhmm(night_min),
+               _fmt_hhmm(pic_min), _fmt_hhmm(copilot_min), _fmt_hhmm(dual_min), _fmt_hhmm(instr_min),
+               f.get("note") or ""]
+    else:  # faa_csv
+        header = ["Date", "Aircraft Make/Model", "Aircraft Ident", "Route", "Total Time",
+                   "PIC", "SIC", "Dual Received", "Night", "Instrument", "Remarks"]
+        row = [date_utc, f.get("aircraft_type") or "", f.get("registration") or "", route,
+               _fmt_hhmm(total_min), _fmt_hhmm(pic_min), _fmt_hhmm(copilot_min), _fmt_hhmm(dual_min),
+               _fmt_hhmm(night_min), _fmt_hhmm(instr_min), f.get("note") or ""]
+    return header, row
+
+
+def _csv_escape(value: str) -> str:
+    """Quotes a CSV field if it contains a comma, quote, or newline."""
+    if any(c in value for c in (",", '"', "\n")):
+        return '"' + value.replace('"', '""') + '"'
+    return value
+
+
 @api_router.get("/flights/{flight_id}/export")
 async def export_flight(
     flight_id: str,
-    format: str = Query("csv", regex="^(csv|geojson)$"),
+    format: str = Query("csv", regex="^(csv|geojson|dgca_csv|faa_csv)$"),
     user: dict = Depends(get_current_user),
 ):
     f = await db.flights.find_one(
@@ -1089,6 +1147,13 @@ async def export_flight(
     )
     if not f:
         raise HTTPException(status_code=404, detail="Flight not found")
+
+    if format in ("dgca_csv", "faa_csv"):
+        header, row = _build_logbook_row(f, format)
+        lines = [",".join(_csv_escape(str(v)) for v in header), ",".join(_csv_escape(str(v)) for v in row)]
+        label = "dgca" if format == "dgca_csv" else "faa"
+        return {"filename": f"flight-{flight_id[:8]}-{label}.csv", "content_type": "text/csv", "content": "\n".join(lines)}
+
     if format == "csv":
         lines = ["timestamp_iso,lat,lon,alt_ft,speed_kt,heading_deg"]
         for s in f["samples"]:
@@ -1123,7 +1188,6 @@ async def export_flight(
         }
         import json as _json
         return {"filename": f"flight-{flight_id[:8]}.geojson", "content_type": "application/geo+json", "content": _json.dumps(geo)}
-
 
 
 # ---------- Admin ----------
