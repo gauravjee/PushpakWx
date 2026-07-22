@@ -195,7 +195,7 @@ export const api = {
     request<FlightSummary>(`/flights/${id}/details`, { method: 'PUT', body: JSON.stringify(payload) }, true),
   deleteFlight: (id: string) =>
     request<{ ok: boolean }>(`/flights/${id}`, { method: 'DELETE' }, true),
-  exportFlight: (id: string, format: 'csv' | 'geojson') =>
+  exportFlight: (id: string, format: 'csv' | 'geojson' | 'dgca_csv' | 'faa_csv') =>
     request<{ filename: string; content_type: string; content: string }>(
       `/flights/${id}/export?format=${format}`, {}, true,
     ),

@@ -73,7 +73,7 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
     ]);
   };
 
-  const doExport = async (format: 'csv' | 'geojson') => {
+  const doExport = async (format: 'csv' | 'geojson' | 'dgca_csv' | 'faa_csv') => {
     setExporting(true);
     try {
       const r = await api.exportFlight(id as string, format);
@@ -216,8 +216,33 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
           </View>
         ) : null}
 
-        {/* Export */}
-        <Text style={styles.sectionTitle}>EXPORT</Text>
+        {/* Logbook export — the actual DGCA/FAA-format entry for this flight */}
+        <Text style={styles.sectionTitle}>DOWNLOAD LOGBOOK</Text>
+        <View style={styles.exportRow}>
+          <Pressable
+            testID="export-dgca-button"
+            onPress={() => doExport('dgca_csv')}
+            style={styles.exportBtn}
+            disabled={exporting}
+          >
+            <Ionicons name="book-outline" size={18} color={colors.brand} />
+            <Text style={styles.exportText}>DGCA format</Text>
+            <Text style={styles.exportSub}>Block times (UTC), day/night, PIC/dual/instrument split</Text>
+          </Pressable>
+          <Pressable
+            testID="export-faa-button"
+            onPress={() => doExport('faa_csv')}
+            style={styles.exportBtn}
+            disabled={exporting}
+          >
+            <Ionicons name="book-outline" size={18} color={colors.brand} />
+            <Text style={styles.exportText}>FAA format</Text>
+            <Text style={styles.exportSub}>PIC/SIC/dual received, night, instrument</Text>
+          </Pressable>
+        </View>
+
+        {/* Raw flight track — for other tools, not a logbook entry */}
+        <Text style={styles.sectionTitle}>FLIGHT TRACK</Text>
         <View style={styles.exportRow}>
           <Pressable
             testID="export-csv-button"
@@ -227,7 +252,7 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
           >
             <Ionicons name="document-text-outline" size={18} color={colors.brand} />
             <Text style={styles.exportText}>CSV</Text>
-            <Text style={styles.exportSub}>For spreadsheets / FAA logbook</Text>
+            <Text style={styles.exportSub}>Raw GPS samples, for spreadsheets</Text>
           </Pressable>
           <Pressable
             testID="export-geojson-button"
@@ -238,6 +263,7 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
             <Ionicons name="map-outline" size={18} color={colors.brand} />
             <Text style={styles.exportText}>GeoJSON</Text>
             <Text style={styles.exportSub}>For mapping apps</Text>
+
           </Pressable>
         </View>
       </ScrollView>
