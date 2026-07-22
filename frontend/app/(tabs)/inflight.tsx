@@ -12,6 +12,7 @@ import { FlightTrackMap, TrackSample } from '@/src/components/FlightTrackMap';
 import { usePrefs } from '@/src/context/PrefsContext';
 import { api } from '@/src/api/client';
 import { convertWind, convertAlt, windUnitLabel, altUnitLabel } from '@/src/utils/weather';
+import { AIRCRAFT_TYPES } from '@/src/constants/aircraft';
 
 type Sample = TrackSample;
 
@@ -38,6 +39,14 @@ export default function InFlight() {
   const [recordStartMs, setRecordStartMs] = useState<number | null>(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveNote, setSaveNote] = useState('');
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [savedFlightId, setSavedFlightId] = useState<string | null>(null);
+  const [aircraftType, setAircraftType] = useState('');
+  const [aircraftTypeOther, setAircraftTypeOther] = useState('');
+  const [registration, setRegistration] = useState('');
+  const [capacity, setCapacity] = useState<'pic' | 'dual' | 'copilot'>('pic');
+  const [instrumentMinutes, setInstrumentMinutes] = useState('');
+  const [savingDetails, setSavingDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingSamples, setPendingSamples] = useState<Sample[]>([]);
   const [pendingStart, setPendingStart] = useState<number | null>(null);
@@ -318,7 +327,7 @@ export default function InFlight() {
     if (!pendingStart || !pendingEnd || pendingSamples.length < 2) return;
     setSaving(true);
     try {
-      await api.createFlight({
+      const created = await api.createFlight({
         started_at: new Date(pendingStart).toISOString(),
         ended_at: new Date(pendingEnd).toISOString(),
         note: saveNote.trim() || undefined,
@@ -336,12 +345,49 @@ export default function InFlight() {
       setPendingSamples([]);
       setPendingStart(null);
       setPendingEnd(null);
-      // Navigate to logbook to show the newly saved flight
-      router.push('/logbook');
+      // Offer to fill in logbook details (aircraft, capacity, etc.) before
+      // heading to the logbook — entirely optional, skippable.
+      setSavedFlightId(created.id);
+      setAircraftType('');
+      setAircraftTypeOther('');
+      setRegistration('');
+      setCapacity('pic');
+      setInstrumentMinutes('');
+      setDetailsModalVisible(true);
     } catch (e: any) {
       Alert.alert('Save failed', e.message || 'Could not save flight');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const skipDetails = () => {
+    setDetailsModalVisible(false);
+    setSavedFlightId(null);
+    router.push('/logbook');
+  };
+
+  const saveDetailsAndContinue = async () => {
+    if (!savedFlightId) return;
+    setSavingDetails(true);
+    try {
+      const finalType = aircraftType === 'Other' ? aircraftTypeOther.trim() : aircraftType;
+      const mins = parseFloat(instrumentMinutes);
+      await api.updateFlightDetails(savedFlightId, {
+        aircraft_type: finalType || undefined,
+        registration: registration.trim() || undefined,
+        capacity,
+        instrument_minutes: !isNaN(mins) ? mins : undefined,
+      });
+    } catch (e: any) {
+      // Non-blocking — the flight itself already saved successfully;
+      // these details can always be edited later from the logbook.
+      Alert.alert('Details not saved', e.message || 'You can add these later from the logbook.');
+    } finally {
+      setSavingDetails(false);
+      setDetailsModalVisible(false);
+      setSavedFlightId(null);
+      router.push('/logbook');
     }
   };
 
@@ -644,6 +690,106 @@ export default function InFlight() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={detailsModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={skipDetails}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} style={{ width: '100%' }}>
+            <View style={styles.modalCard} testID="flight-details-modal">
+              <Text style={styles.modalLabel}>FLIGHT SAVED</Text>
+              <Text style={styles.modalTitle}>Add logbook details?</Text>
+              <Text style={[styles.modalLabel, { marginBottom: spacing.md, textTransform: 'none', letterSpacing: 0 }]}>
+                Optional — for a DGCA-format logbook entry
+              </Text>
+
+              <Text style={styles.modalLabel}>AIRCRAFT TYPE</Text>
+              <View style={styles.chipWrap}>
+                {AIRCRAFT_TYPES.map(t => (
+                  <Pressable
+                    key={t}
+                    testID={`aircraft-chip-${t}`}
+                    onPress={() => setAircraftType(t)}
+                    style={[styles.detailChip, aircraftType === t && styles.detailChipActive]}
+                  >
+                    <Text style={[styles.detailChipText, aircraftType === t && styles.detailChipTextActive]}>{t}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {aircraftType === 'Other' && (
+                <TextInput
+                  testID="aircraft-other-input"
+                  value={aircraftTypeOther}
+                  onChangeText={setAircraftTypeOther}
+                  placeholder="Enter aircraft type"
+                  placeholderTextColor={colors.onSurfaceTertiary}
+                  style={[styles.modalInput, { marginTop: spacing.sm }]}
+                />
+              )}
+
+              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>REGISTRATION</Text>
+              <TextInput
+                testID="registration-input"
+                value={registration}
+                onChangeText={setRegistration}
+                placeholder="e.g. VT-ABC"
+                placeholderTextColor={colors.onSurfaceTertiary}
+                autoCapitalize="characters"
+                style={styles.modalInput}
+              />
+
+              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>CAPACITY</Text>
+              <View style={styles.capacityRow}>
+                {(['pic', 'dual', 'copilot'] as const).map(c => (
+                  <Pressable
+                    key={c}
+                    testID={`capacity-${c}`}
+                    onPress={() => setCapacity(c)}
+                    style={[styles.capacityBtn, capacity === c && styles.capacityBtnActive]}
+                  >
+                    <Text style={[styles.capacityBtnText, capacity === c && styles.capacityBtnTextActive]}>
+                      {c === 'pic' ? 'PIC (Solo)' : c === 'dual' ? 'Dual' : 'Co-pilot'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>INSTRUMENT TIME (MIN)</Text>
+              <TextInput
+                testID="instrument-minutes-input"
+                value={instrumentMinutes}
+                onChangeText={t => setInstrumentMinutes(t.replace(/[^0-9]/g, ''))}
+                placeholder="0"
+                placeholderTextColor={colors.onSurfaceTertiary}
+                keyboardType="number-pad"
+                style={styles.modalInput}
+              />
+
+              <View style={styles.modalBtnRow}>
+                <Pressable
+                  testID="skip-details-button"
+                  onPress={skipDetails}
+                  style={[styles.modalBtn, styles.modalBtnCancel]}
+                  disabled={savingDetails}
+                >
+                  <Text style={styles.modalBtnCancelText}>SKIP FOR NOW</Text>
+                </Pressable>
+                <Pressable
+                  testID="save-details-button"
+                  onPress={saveDetailsAndContinue}
+                  style={[styles.modalBtn, styles.modalBtnPrimary, savingDetails && { opacity: 0.7 }]}
+                  disabled={savingDetails}
+                >
+                  {savingDetails ? <ActivityIndicator color="#000" /> : <Text style={styles.modalBtnPrimaryText}>SAVE DETAILS</Text>}
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -893,6 +1039,22 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, fontSize: 14,
   },
   modalBtnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  detailChip: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border,
+  },
+  detailChipActive: { backgroundColor: colors.brandTertiary, borderColor: colors.brand },
+  detailChipText: { color: colors.onSurfaceSecondary, fontSize: 11, fontWeight: '700' },
+  detailChipTextActive: { color: colors.brand },
+  capacityRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  capacityBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md,
+    backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border,
+  },
+  capacityBtnActive: { backgroundColor: colors.brandTertiary, borderColor: colors.brand },
+  capacityBtnText: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: '700' },
+  capacityBtnTextActive: { color: colors.brand },
   modalBtn: { flex: 1, padding: 14, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   modalBtnCancel: { backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
   modalBtnCancelText: { color: colors.onSurface, fontWeight: '700', letterSpacing: 1, fontSize: 13 },

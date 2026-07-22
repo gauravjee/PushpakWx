@@ -82,6 +82,20 @@ export type FlightSummary = {
   avg_speed_kt: number;
   max_speed_kt: number;
   duration_s: number;
+  aircraft_type?: string | null;
+  registration?: string | null;
+  capacity?: 'pic' | 'dual' | 'copilot' | null;
+  instrument_minutes?: number | null;
+  day_minutes?: number | null;
+  night_minutes?: number | null;
+};
+
+export type FlightDetailsUpdate = {
+  aircraft_type?: string;
+  registration?: string;
+  capacity?: 'pic' | 'dual' | 'copilot';
+  instrument_minutes?: number;
+  note?: string;
 };
 
 export type FlightDetail = FlightSummary & {
@@ -170,10 +184,15 @@ export const api = {
       valid_from?: number | null;
       valid_to?: number | null;
     }>(`/aviation/taf?icao=${encodeURIComponent(icao)}`, {}, true),
-  createFlight: (payload: { started_at: string; ended_at: string; samples: FlightSample[]; note?: string }) =>
+  createFlight: (payload: {
+    started_at: string; ended_at: string; samples: FlightSample[]; note?: string;
+    aircraft_type?: string; registration?: string; capacity?: 'pic' | 'dual' | 'copilot'; instrument_minutes?: number;
+  }) =>
     request<FlightDetail>('/flights', { method: 'POST', body: JSON.stringify(payload) }, true),
   listFlights: () => request<FlightSummary[]>('/flights', {}, true),
   getFlight: (id: string) => request<FlightDetail>(`/flights/${id}`, {}, true),
+  updateFlightDetails: (id: string, payload: FlightDetailsUpdate) =>
+    request<FlightSummary>(`/flights/${id}/details`, { method: 'PUT', body: JSON.stringify(payload) }, true),
   deleteFlight: (id: string) =>
     request<{ ok: boolean }>(`/flights/${id}`, { method: 'DELETE' }, true),
   exportFlight: (id: string, format: 'csv' | 'geojson') =>

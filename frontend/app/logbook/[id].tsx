@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert, Modal, Platform, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +10,7 @@ import { api, FlightDetail } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
 import { convertAlt, altUnitLabel, convertWind, windUnitLabel } from '@/src/utils/weather';
 import { FlightTrackMap, TrackSample } from '@/src/components/FlightTrackMap';
+import { AIRCRAFT_TYPES } from '@/src/constants/aircraft';
 
 export default function FlightDetailScreen() {  const colors = useThemeColors();
 
@@ -23,6 +24,13 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
   const [exportVisible, setExportVisible] = useState(false);
   const [exportContent, setExportContent] = useState<{ filename: string; content: string; format: string } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [editDetailsVisible, setEditDetailsVisible] = useState(false);
+  const [editAircraftType, setEditAircraftType] = useState('');
+  const [editAircraftTypeOther, setEditAircraftTypeOther] = useState('');
+  const [editRegistration, setEditRegistration] = useState('');
+  const [editCapacity, setEditCapacity] = useState<'pic' | 'dual' | 'copilot'>('pic');
+  const [editInstrumentMinutes, setEditInstrumentMinutes] = useState('');
+  const [savingDetails, setSavingDetails] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -82,6 +90,38 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
     if (!exportContent) return;
     await Clipboard.setStringAsync(exportContent.content);
     Alert.alert('Copied', `${exportContent.filename} copied to clipboard`);
+  };
+
+  const openEditDetails = () => {
+    if (!flight) return;
+    const knownType = AIRCRAFT_TYPES.includes(flight.aircraft_type || '') ? flight.aircraft_type! : (flight.aircraft_type ? 'Other' : '');
+    setEditAircraftType(knownType);
+    setEditAircraftTypeOther(knownType === 'Other' ? (flight.aircraft_type || '') : '');
+    setEditRegistration(flight.registration || '');
+    setEditCapacity(flight.capacity || 'pic');
+    setEditInstrumentMinutes(flight.instrument_minutes != null ? String(flight.instrument_minutes) : '');
+    setEditDetailsVisible(true);
+  };
+
+  const saveEditedDetails = async () => {
+    if (!flight) return;
+    setSavingDetails(true);
+    try {
+      const finalType = editAircraftType === 'Other' ? editAircraftTypeOther.trim() : editAircraftType;
+      const mins = parseFloat(editInstrumentMinutes);
+      const updated = await api.updateFlightDetails(flight.id, {
+        aircraft_type: finalType || undefined,
+        registration: editRegistration.trim() || undefined,
+        capacity: editCapacity,
+        instrument_minutes: !isNaN(mins) ? mins : undefined,
+      });
+      setFlight({ ...flight, ...updated });
+      setEditDetailsVisible(false);
+    } catch (e: any) {
+      Alert.alert('Save failed', e.message || 'Could not save these details');
+    } finally {
+      setSavingDetails(false);
+    }
   };
 
   if (loading) {
@@ -150,6 +190,25 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
           <StatCard label="SAMPLES" value={`${flight.samples.length}`} unit="" />
         </View>
 
+        {/* Logbook details (DGCA-relevant fields) */}
+        <View style={styles.detailsCard} testID="logbook-details-card">
+          <View style={styles.detailsHeader}>
+            <Text style={styles.sectionTitle}>LOGBOOK DETAILS</Text>
+            <Pressable testID="edit-details-button" onPress={openEditDetails} style={styles.editBtn}>
+              <Ionicons name="create-outline" size={16} color={colors.brand} />
+              <Text style={styles.editBtnText}>EDIT</Text>
+            </Pressable>
+          </View>
+          <View style={styles.detailsGrid}>
+            <DetailRow label="Aircraft" value={flight.aircraft_type || '—'} />
+            <DetailRow label="Registration" value={flight.registration || '—'} />
+            <DetailRow label="Capacity" value={capacityLabel(flight.capacity)} />
+            <DetailRow label="Instrument" value={flight.instrument_minutes != null ? `${flight.instrument_minutes} min` : '—'} />
+            <DetailRow label="Day" value={flight.day_minutes != null ? `${flight.day_minutes} min` : '—'} />
+            <DetailRow label="Night" value={flight.night_minutes != null ? `${flight.night_minutes} min` : '—'} />
+          </View>
+        </View>
+
         {flight.note ? (
           <View style={styles.noteCard}>
             <Text style={styles.noteLabel}>NOTE</Text>
@@ -214,6 +273,102 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
           </View>
         </View>
       </Modal>
+
+      {/* Edit logbook details modal */}
+      <Modal
+        visible={editDetailsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditDetailsVisible(false)}
+      >
+        <View style={styles.editModalOverlay}>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} style={{ width: '100%' }}>
+            <View style={styles.modalCard} testID="edit-details-modal">
+              <Text style={styles.modalTitle}>Edit logbook details</Text>
+
+              <Text style={styles.modalLabel}>AIRCRAFT TYPE</Text>
+              <View style={styles.chipWrap}>
+                {AIRCRAFT_TYPES.map(t => (
+                  <Pressable
+                    key={t}
+                    testID={`edit-aircraft-chip-${t}`}
+                    onPress={() => setEditAircraftType(t)}
+                    style={[styles.detailChip, editAircraftType === t && styles.detailChipActive]}
+                  >
+                    <Text style={[styles.detailChipText, editAircraftType === t && styles.detailChipTextActive]}>{t}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {editAircraftType === 'Other' && (
+                <TextInput
+                  testID="edit-aircraft-other-input"
+                  value={editAircraftTypeOther}
+                  onChangeText={setEditAircraftTypeOther}
+                  placeholder="Enter aircraft type"
+                  placeholderTextColor={colors.onSurfaceTertiary}
+                  style={[styles.modalInput, { marginTop: spacing.sm }]}
+                />
+              )}
+
+              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>REGISTRATION</Text>
+              <TextInput
+                testID="edit-registration-input"
+                value={editRegistration}
+                onChangeText={setEditRegistration}
+                placeholder="e.g. VT-ABC"
+                placeholderTextColor={colors.onSurfaceTertiary}
+                autoCapitalize="characters"
+                style={styles.modalInput}
+              />
+
+              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>CAPACITY</Text>
+              <View style={styles.capacityRow}>
+                {(['pic', 'dual', 'copilot'] as const).map(c => (
+                  <Pressable
+                    key={c}
+                    testID={`edit-capacity-${c}`}
+                    onPress={() => setEditCapacity(c)}
+                    style={[styles.capacityBtn, editCapacity === c && styles.capacityBtnActive]}
+                  >
+                    <Text style={[styles.capacityBtnText, editCapacity === c && styles.capacityBtnTextActive]}>
+                      {c === 'pic' ? 'PIC (Solo)' : c === 'dual' ? 'Dual' : 'Co-pilot'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>INSTRUMENT TIME (MIN)</Text>
+              <TextInput
+                testID="edit-instrument-minutes-input"
+                value={editInstrumentMinutes}
+                onChangeText={t => setEditInstrumentMinutes(t.replace(/[^0-9]/g, ''))}
+                placeholder="0"
+                placeholderTextColor={colors.onSurfaceTertiary}
+                keyboardType="number-pad"
+                style={styles.modalInput}
+              />
+
+              <View style={styles.modalBtnRow}>
+                <Pressable
+                  testID="cancel-edit-details-button"
+                  onPress={() => setEditDetailsVisible(false)}
+                  style={[styles.modalBtn, styles.modalBtnCancel]}
+                >
+                  <Text style={styles.modalBtnCancelText}>CANCEL</Text>
+                </Pressable>
+                <Pressable
+                  testID="save-edit-details-button"
+                  onPress={saveEditedDetails}
+                  style={[styles.modalBtn, styles.modalBtnPrimary, savingDetails && { opacity: 0.7 }]}
+                  disabled={savingDetails}
+                >
+                  {savingDetails ? <ActivityIndicator color="#000" /> : <Text style={styles.modalBtnPrimaryText}>SAVE</Text>}
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -230,6 +385,24 @@ function StatCard({ label, value, unit }: { label: string; value: string; unit: 
       </View>
     </View>
   );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailRowLabel}>{label}</Text>
+      <Text style={styles.detailRowValue}>{value}</Text>
+    </View>
+  );
+}
+
+function capacityLabel(capacity?: 'pic' | 'dual' | 'copilot' | null): string {
+  if (capacity === 'pic') return 'PIC (Solo)';
+  if (capacity === 'dual') return 'Dual';
+  if (capacity === 'copilot') return 'Co-pilot';
+  return '—';
 }
 
 function formatDuration(s: number): string {
@@ -302,4 +475,60 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
     backgroundColor: colors.brand, padding: 14, borderRadius: radius.md,
   },
   copyBtnText: { color: '#000', fontWeight: '800', letterSpacing: 1.5, fontSize: 13 },
+
+  detailsCard: {
+    marginHorizontal: spacing.lg, marginTop: spacing.md,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    padding: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  detailsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs },
+  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  editBtnText: { color: colors.brand, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  detailsGrid: { gap: 2 },
+  detailRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.divider,
+  },
+  detailRowLabel: { color: colors.onSurfaceSecondary, fontSize: 12 },
+  detailRowValue: { color: colors.onSurface, fontSize: 13, fontWeight: '700' },
+
+  editModalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center', justifyContent: 'center', padding: spacing.xl,
+  },
+  modalCard: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg, padding: spacing.xl,
+    width: '100%', maxWidth: 400,
+    borderWidth: 1, borderColor: colors.border, gap: spacing.md,
+  },
+  modalTitle: { color: colors.onSurface, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  modalLabel: { color: colors.onSurfaceSecondary, fontSize: 12, marginTop: spacing.sm },
+  modalInput: {
+    backgroundColor: colors.surfaceTertiary, color: colors.onSurface,
+    borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 12,
+    borderWidth: 1, borderColor: colors.border, fontSize: 14,
+  },
+  modalBtnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  detailChip: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border,
+  },
+  detailChipActive: { backgroundColor: colors.brandTertiary, borderColor: colors.brand },
+  detailChipText: { color: colors.onSurfaceSecondary, fontSize: 11, fontWeight: '700' },
+  detailChipTextActive: { color: colors.brand },
+  capacityRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  capacityBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.md,
+    backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border,
+  },
+  capacityBtnActive: { backgroundColor: colors.brandTertiary, borderColor: colors.brand },
+  capacityBtnText: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: '700' },
+  capacityBtnTextActive: { color: colors.brand },
+  modalBtn: { flex: 1, padding: 14, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  modalBtnCancel: { backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
+  modalBtnCancelText: { color: colors.onSurface, fontWeight: '700', letterSpacing: 1, fontSize: 13 },
+  modalBtnPrimary: { backgroundColor: colors.brand },
+  modalBtnPrimaryText: { color: '#000', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
 });
