@@ -178,7 +178,16 @@ export default function Login({ onLoggedIn }) {
             <div className="login-sub">Enter the code sent to {email}</div>
             <div className="login-field">
               <label className="login-label">Verification code</label>
-              <input type="text" value={code} onChange={(e) => setCode(e.target.value)} required autoFocus maxLength={6} />
+              <input
+                type="text"
+                className="otp-input"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                required
+                autoFocus
+                maxLength={6}
+              />
             </div>
             {error && <div className="login-error">{error}</div>}
             {info && <div className="login-info">{info}</div>}
@@ -214,7 +223,16 @@ export default function Login({ onLoggedIn }) {
             <div className="login-sub">Enter the code sent to {email}, and your new password</div>
             <div className="login-field">
               <label className="login-label">Reset code</label>
-              <input type="text" value={code} onChange={(e) => setCode(e.target.value)} required autoFocus maxLength={6} />
+              <input
+                type="text"
+                className="otp-input"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                required
+                autoFocus
+                maxLength={6}
+              />
             </div>
             <div className="login-field">
               <label className="login-label">New password</label>

@@ -148,6 +148,19 @@ input:focus { outline: none; border-color: var(--brand); }
 }
 .login-link:hover { color: var(--brand); }
 
+.otp-input {
+  background: var(--surface-2);
+  color: var(--brand) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 32px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 10px;
+  width: 100%;
+}
+
 /* Flight list */
 .flight-card {
   display: flex; align-items: center; justify-content: space-between;
