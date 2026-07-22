@@ -139,7 +139,14 @@ input:focus { outline: none; border-color: var(--brand); }
 .login-field { margin-bottom: 16px; }
 .login-label { font-size: 11px; color: var(--on-surface-3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; display: block; }
 .login-error { color: var(--error); font-size: 13px; margin-bottom: 16px; }
+.login-info { color: var(--brand); font-size: 13px; margin-bottom: 16px; }
 .login-submit { width: 100%; padding: 13px; margin-top: 8px; }
+.login-link-row { display: flex; justify-content: space-between; margin-top: 18px; flex-wrap: wrap; gap: 8px; }
+.login-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--on-surface-2); font-size: 12px; text-decoration: underline;
+}
+.login-link:hover { color: var(--brand); }
 
 /* Flight list */
 .flight-card {

@@ -41,6 +41,45 @@ export async function login(email, password) {
   return data.user
 }
 
+export async function register(email, password, fullName) {
+  return request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, full_name: fullName }),
+  }, false)
+}
+
+export async function verifyEmail(email, code) {
+  const data = await request('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  }, false)
+  setToken(data.access_token)
+  localStorage.setItem('pushpakwx_user', JSON.stringify(data.user))
+  localStorage.setItem('pushpakwx_previous_login', data.previous_login || '')
+  return data.user
+}
+
+export async function resendVerification(email) {
+  return request('/auth/resend-verification', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  }, false)
+}
+
+export async function forgotPassword(email) {
+  return request('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  }, false)
+}
+
+export async function resetPassword(email, code, newPassword) {
+  return request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, code, new_password: newPassword }),
+  }, false)
+}
+
 export function getStoredUser() {
   try {
     return JSON.parse(localStorage.getItem('pushpakwx_user') || 'null')
