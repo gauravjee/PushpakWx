@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import { Image } from 'expo-image';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, Pressable, Alert,
 } from 'react-native';
@@ -235,6 +236,22 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }} edges={['top']} testID="dashboard-screen">
+      <Image
+        source={require('../../assets/images/icon.png')}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          width: 280,
+          height: 280,
+          marginLeft: -140,
+          marginTop: -140,
+          opacity: 0.05,
+        }}
+        contentFit="contain"
+        pointerEvents="none"
+        testID="dashboard-watermark"
+      />
       <ScrollView
         contentContainerStyle={{ paddingBottom: spacing.xxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
