@@ -54,6 +54,7 @@ export default function InFlight() {
   const locSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgSubRef = useRef<Location.LocationSubscription | null>(null);
   const hdgRef = useRef<number>(0);
+  const headingHistoryRef = useRef<number[]>([]);
   const [webCompassNeedsPermission, setWebCompassNeedsPermission] = useState(false);
   const [webCompassUnavailable, setWebCompassUnavailable] = useState(false);
   const [headingAccuracy, setHeadingAccuracy] = useState<number | null>(null);
@@ -91,6 +92,29 @@ export default function InFlight() {
     };
   }, []);
 
+  // Smooths raw compass readings with a circular moving average (last 5
+  // samples) — a plain average would break at the 359°→0° wraparound,
+  // so this averages via sin/cos components instead. Raw single-reading
+  // jitter of several degrees is normal for phone magnetometers even when
+  // held still; this trades a small amount of lag for a stable display.
+  const HEADING_SMOOTHING_WINDOW = 5;
+  const smoothHeading = (rawHeading: number): number => {
+    const history = headingHistoryRef.current;
+    history.push(rawHeading);
+    if (history.length > HEADING_SMOOTHING_WINDOW) history.shift();
+    let sinSum = 0;
+    let cosSum = 0;
+    for (const h of history) {
+      const rad = (h * Math.PI) / 180;
+      sinSum += Math.sin(rad);
+      cosSum += Math.cos(rad);
+    }
+    const meanRad = Math.atan2(sinSum, cosSum);
+    let meanDeg = (meanRad * 180) / Math.PI;
+    if (meanDeg < 0) meanDeg += 360;
+    return meanDeg;
+  };
+
   // Browser compass fallback for web (expo-location's watchHeadingAsync is
   // native-only). Uses the DeviceOrientation API directly — works on phones
   // with a real magnetometer (Android Chrome, iOS Safari after permission);
@@ -105,8 +129,9 @@ export default function InFlight() {
         heading = (360 - e.alpha) % 360;
       }
       if (heading != null && heading >= 0) {
-        setHeading(heading);
-        hdgRef.current = heading;
+        const smoothed = smoothHeading(heading);
+        setHeading(smoothed);
+        hdgRef.current = smoothed;
         setWebCompassUnavailable(false);
       }
     };
@@ -253,8 +278,9 @@ export default function InFlight() {
             if (cancelled) return;
             const val = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
             if (val >= 0) {
-              setHeading(val);
-              hdgRef.current = val;
+              const smoothed = smoothHeading(val);
+              setHeading(smoothed);
+              hdgRef.current = smoothed;
             }
             setHeadingAccuracy(h.accuracy);
             // Reappear next time calibration drops, even if dismissed before —
