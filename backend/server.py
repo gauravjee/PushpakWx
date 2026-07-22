@@ -1052,13 +1052,34 @@ async def update_flight_details(flight_id: str, payload: FlightDetailsUpdate, us
     updated = await db.flights.find_one({"id": flight_id, "user_id": user["id"]}, {"_id": 0, "user_id": 0, "samples": 0})
     return updated
 
+# ============= Full Logbook Export — Date Range Filtering =============
+# Extends the existing list_flights endpoint to accept optional from/to
+# date filters, so the Pilot Portal can request a specific range (or
+# everything, when both are omitted) instead of always fetching all
+# flights. All formatting (DGCA/FAA rows, CSV, PDF) happens client-side
+# in the portal, reusing the same row-building logic already verified
+# for the single-flight export — no new backend export logic needed.
+
 @api_router.get("/flights")
-async def list_flights(user: dict = Depends(get_current_user)):
+async def list_flights(
+    user: dict = Depends(get_current_user),
+    from_date: Optional[str] = Query(None, description="ISO date, e.g. 2026-07-01"),
+    to_date: Optional[str] = Query(None, description="ISO date, e.g. 2026-07-31"),
+):
+    query = {"user_id": user["id"]}
+    date_filter = {}
+    if from_date:
+        date_filter["$gte"] = from_date
+    if to_date:
+        date_filter["$lte"] = to_date + "T23:59:59"
+    if date_filter:
+        query["started_at"] = date_filter
     cursor = db.flights.find(
-        {"user_id": user["id"]},
+        query,
         {"_id": 0, "user_id": 0, "samples": 0},
     ).sort("started_at", -1)
     return await cursor.to_list(500)
+
 
 @api_router.get("/flights/{flight_id}")
 async def get_flight(flight_id: str, user: dict = Depends(get_current_user)):
