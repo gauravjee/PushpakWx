@@ -450,14 +450,41 @@ async def resend_verification(request: Request, payload: ResendVerificationReque
     await create_and_send_otp(email_low, "verify", user.get("full_name"))
     return {"message": "Verification code sent"}
 
+FAILED_LOGIN_THRESHOLD = 5
+LOCKOUT_DURATION_MINUTES = 60
+
 @api_router.post("/auth/login", response_model=Token)
-@limiter.limit("20/minute")
+@limiter.limit("10/minute")
 async def login(request: Request, payload: UserLogin):
     user = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
-    if not user or not verify_password(payload.password, user["hashed_password"]):
+    if not user:
         raise HTTPException(status_code=401, detail="Incorrect email or password")
+
+    now = datetime.now(timezone.utc)
+    locked_until_str = user.get("locked_until")
+    if locked_until_str:
+        locked_until = datetime.fromisoformat(locked_until_str)
+        if now < locked_until:
+            remaining_min = int((locked_until - now).total_seconds() / 60) + 1
+            raise HTTPException(
+                status_code=423,
+                detail=f"Account temporarily locked due to repeated failed attempts. Try again in {remaining_min} minute(s), or reset your password to regain access immediately.",
+            )
+        else:
+            # Lockout window has passed — treat as a fresh start
+            await db.users.update_one({"id": user["id"]}, {"$set": {"failed_login_attempts": 0, "locked_until": None}})
+            user["failed_login_attempts"] = 0
+            user["locked_until"] = None
+
+    if not verify_password(payload.password, user["hashed_password"]):
+        attempts = user.get("failed_login_attempts", 0) + 1
+        update = {"failed_login_attempts": attempts}
+        if attempts >= FAILED_LOGIN_THRESHOLD:
+            update["locked_until"] = (now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)).isoformat()
+        await db.users.update_one({"id": user["id"]}, {"$set": update})
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+
     if not user.get("email_verified"):
-        # trigger resend (best-effort, ignore cooldown errors)
         try:
             await create_and_send_otp(user["email"], "verify", user.get("full_name"))
         except HTTPException:
@@ -468,7 +495,10 @@ async def login(request: Request, payload: UserLogin):
         )
     previous_login = user.get("last_login")
     token = create_access_token(user["id"], user["email"])
-    await db.users.update_one({"id": user["id"]}, {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}})
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"last_login": datetime.now(timezone.utc).isoformat(), "failed_login_attempts": 0, "locked_until": None}},
+    )
     await log_event("login", user_id=user["id"])
     return Token(
     access_token=token,
@@ -502,7 +532,11 @@ async def reset_password(request: Request, payload: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="Invalid or expired reset code")
     res = await db.users.update_one(
         {"email": email_low},
-        {"$set": {"hashed_password": hash_password(payload.new_password)}},
+        {"$set": {
+            "hashed_password": hash_password(payload.new_password),
+            "failed_login_attempts": 0,
+            "locked_until": None,
+        }},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
@@ -530,7 +564,8 @@ async def delete_account(payload: DeleteAccountRequest, user: dict = Depends(get
 
 # ---------- Airports ----------
 @api_router.get("/airports/search")
-async def airport_search(q: str = Query(..., min_length=1)):
+@limiter.limit("10/minute")
+async def airport_search(request: Request, q: str = Query(..., min_length=1)):
     q_up = re.escape(q.strip().upper())
     q_low = re.escape(q.strip().lower())
     cursor = db.airports.find({
@@ -692,7 +727,8 @@ async def _fetch_wttr_forecast(lat: float, lon: float) -> Optional[dict]:
     }
 
 @api_router.get("/weather/forecast")
-async def weather_forecast(lat: float, lon: float, user: Optional[dict] = Depends(get_optional_user)):
+@limiter.limit("10/minute")
+async def weather_forecast(request: Request, lat: float, lon: float, user: Optional[dict] = Depends(get_optional_user)):
     """Proxies Open-Meteo hourly forecast with a 5-minute cache + stale fallback + wttr.in fallback."""
     key = f"forecast:{round(lat, 2)}:{round(lon, 2)}"
     cached = await _cache_get(key, FORECAST_CACHE_TTL_S)
@@ -799,7 +835,8 @@ async def geocode(q: str = Query(..., min_length=1)):
 
 # ---------- METAR / TAF (aviationweather.gov) ----------
 @api_router.get("/aviation/metar")
-async def get_metar(icao: str = Query(..., min_length=3, max_length=4), user: Optional[dict] = Depends(get_optional_user)):
+@limiter.limit("10/minute")
+async def get_metar(request: Request, icao: str = Query(..., min_length=3, max_length=4), user: Optional[dict] = Depends(get_optional_user)):
     """Fetch latest METAR for an ICAO from aviationweather.gov (US NOAA)."""
     icao_up = icao.upper()
     key = f"metar:{icao_up}"
@@ -852,7 +889,8 @@ async def get_metar(icao: str = Query(..., min_length=3, max_length=4), user: Op
     return {**result, "_cache": {"hit": False, "age_s": 0, "stale": False}}
 
 @api_router.get("/aviation/taf")
-async def get_taf(icao: str = Query(..., min_length=3, max_length=4), user: Optional[dict] = Depends(get_optional_user)):
+@limiter.limit("10/minute")
+async def get_taf(request: Request, icao: str = Query(..., min_length=3, max_length=4), user: Optional[dict] = Depends(get_optional_user)):
     """Fetch latest TAF for an ICAO from aviationweather.gov (US NOAA)."""
     icao_up = icao.upper()
     key = f"taf:{icao_up}"
