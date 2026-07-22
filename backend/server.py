@@ -21,6 +21,8 @@ import httpx
 import csv
 import io
 from pymongo import UpdateOne
+from astral import LocationInfo
+from astral.sun import sun
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -134,6 +136,10 @@ class FlightCreate(BaseModel):
     ended_at: str  # ISO
     samples: List[FlightSample]
     note: Optional[str] = None
+    aircraft_type: Optional[str] = None
+    registration: Optional[str] = None
+    capacity: Optional[str] = None  # "pic" | "dual" | "copilot"
+    instrument_minutes: Optional[float] = None
 
 # ============= AUTH HELPERS =============
 
@@ -953,12 +959,47 @@ def _compute_flight_stats(samples: List[dict]) -> dict:
         "duration_s": duration_s,
     }
 
+VALID_CAPACITIES = ("pic", "dual", "copilot")
+
+def _compute_day_night_split(samples: List[dict]) -> dict:
+    """Splits flight duration into day/night MINUTES per DGCA's rule:
+    night = 30 min after sunset to 30 min before sunrise. Uses the
+    flight's midpoint location and start date as the sunrise/sunset
+    reference — a reasonable approximation for typical short training
+    flights that don't cross into a new day or a very different latitude."""
+    if len(samples) < 2:
+        return {"day_minutes": 0, "night_minutes": 0}
+    mid = samples[len(samples) // 2]
+    dt_start = datetime.fromtimestamp(samples[0]["t"] / 1000, tz=timezone.utc)
+    try:
+        loc = LocationInfo("flight", "flight", "UTC", mid["lat"], mid["lon"])
+        s = sun(loc.observer, date=dt_start.date())
+        night_start = s["sunset"] + timedelta(minutes=30)
+        night_end = s["sunrise"] - timedelta(minutes=30)
+    except Exception:
+        total = (samples[-1]["t"] - samples[0]["t"]) / 1000 / 60
+        return {"day_minutes": round(total), "night_minutes": 0}
+    day_s = night_s = 0.0
+    for i in range(1, len(samples)):
+        t_prev = datetime.fromtimestamp(samples[i - 1]["t"] / 1000, tz=timezone.utc)
+        t_cur = datetime.fromtimestamp(samples[i]["t"] / 1000, tz=timezone.utc)
+        delta = (samples[i]["t"] - samples[i - 1]["t"]) / 1000
+        mid_t = t_prev + (t_cur - t_prev) / 2
+        if mid_t >= night_start or mid_t <= night_end:
+            night_s += delta
+        else:
+            day_s += delta
+    return {"day_minutes": round(day_s / 60), "night_minutes": round(night_s / 60)}
+
 @api_router.post("/flights")
 async def create_flight(payload: FlightCreate, user: dict = Depends(get_current_user)):
     if not payload.samples or len(payload.samples) < 2:
         raise HTTPException(status_code=400, detail="Not enough samples to save a flight")
+    if payload.capacity is not None and payload.capacity not in VALID_CAPACITIES:
+        raise HTTPException(status_code=400, detail=f"capacity must be one of {VALID_CAPACITIES}")
     samples = [s.dict() for s in payload.samples]
     stats = _compute_flight_stats(samples)
+    day_night = _compute_day_night_split(samples)
     dep = await _nearest_airport(samples[0]["lat"], samples[0]["lon"])
     arr = await _nearest_airport(samples[-1]["lat"], samples[-1]["lon"])
     flight_id = str(uuid.uuid4())
@@ -969,6 +1010,12 @@ async def create_flight(payload: FlightCreate, user: dict = Depends(get_current_
         "started_at": payload.started_at,
         "ended_at": payload.ended_at,
         "note": payload.note,
+        "aircraft_type": payload.aircraft_type,
+        "registration": payload.registration,
+        "capacity": payload.capacity,
+        "instrument_minutes": payload.instrument_minutes,
+        "day_minutes": day_night["day_minutes"],
+        "night_minutes": day_night["night_minutes"],
         "samples": samples,
         "dep_icao": (dep or {}).get("icao"),
         "dep_name": (dep or {}).get("name"),
@@ -983,6 +1030,27 @@ async def create_flight(payload: FlightCreate, user: dict = Depends(get_current_
     await db.flights.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+class FlightDetailsUpdate(BaseModel):
+    aircraft_type: Optional[str] = None
+    registration: Optional[str] = None
+    capacity: Optional[str] = None  # "pic" | "dual" | "copilot"
+    instrument_minutes: Optional[float] = None
+    note: Optional[str] = None
+
+
+@api_router.put("/flights/{flight_id}/details")
+async def update_flight_details(flight_id: str, payload: FlightDetailsUpdate, user: dict = Depends(get_current_user)):
+    if payload.capacity is not None and payload.capacity not in VALID_CAPACITIES:
+        raise HTTPException(status_code=400, detail=f"capacity must be one of {VALID_CAPACITIES}")
+    update = {k: v for k, v in payload.dict().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="No fields provided to update")
+    res = await db.flights.update_one({"id": flight_id, "user_id": user["id"]}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    updated = await db.flights.find_one({"id": flight_id, "user_id": user["id"]}, {"_id": 0, "user_id": 0, "samples": 0})
+    return updated
 
 @api_router.get("/flights")
 async def list_flights(user: dict = Depends(get_current_user)):
