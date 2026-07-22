@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { spacing, radius, ColorPalette } from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, FlightDetail } from '@/src/api/client';
@@ -21,8 +22,6 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
   const [flight, setFlight] = useState<FlightDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exportVisible, setExportVisible] = useState(false);
-  const [exportContent, setExportContent] = useState<{ filename: string; content: string; format: string } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [editDetailsVisible, setEditDetailsVisible] = useState(false);
   const [editAircraftType, setEditAircraftType] = useState('');
@@ -77,8 +76,7 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
     setExporting(true);
     try {
       const r = await api.exportFlight(id as string, format);
-      setExportContent({ filename: r.filename, content: r.content, format });
-      setExportVisible(true);
+      await downloadOrShare(r.filename, r.content, r.content_type);
     } catch (e: any) {
       Alert.alert('Export failed', e.message);
     } finally {
@@ -86,10 +84,27 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
     }
   };
 
-  const copyToClipboard = async () => {
-    if (!exportContent) return;
-    await Clipboard.setStringAsync(exportContent.content);
-    Alert.alert('Copied', `${exportContent.filename} copied to clipboard`);
+  const downloadOrShare = async (filename: string, content: string, mimeType: string) => {
+    if (Platform.OS === 'web') {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    const fileUri = FileSystem.cacheDirectory + filename;
+    await FileSystem.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.UTF8 });
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(fileUri, { mimeType, dialogTitle: 'Save or share this file' });
+    } else {
+      Alert.alert('Saved', `File saved to app storage: ${filename}`);
+    }
   };
 
   const openEditDetails = () => {
@@ -267,38 +282,6 @@ export default function FlightDetailScreen() {  const colors = useThemeColors();
           </Pressable>
         </View>
       </ScrollView>
-
-      {/* Export preview modal */}
-      <Modal
-        visible={exportVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setExportVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.exportModal} testID="export-modal">
-            <View style={styles.exportModalHeader}>
-              <Text style={styles.exportModalTitle}>{exportContent?.filename}</Text>
-              <Pressable onPress={() => setExportVisible(false)} testID="export-close-button">
-                <Ionicons name="close" size={22} color={colors.onSurface} />
-              </Pressable>
-            </View>
-            <ScrollView style={styles.exportBody}>
-              <Text style={styles.exportContent} selectable>{exportContent?.content}</Text>
-            </ScrollView>
-            <View style={styles.exportFooter}>
-              <Pressable
-                testID="export-copy-button"
-                onPress={copyToClipboard}
-                style={styles.copyBtn}
-              >
-                <Ionicons name="copy-outline" size={16} color="#000" />
-                <Text style={styles.copyBtnText}>COPY TO CLIPBOARD</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Edit logbook details modal */}
       <Modal
