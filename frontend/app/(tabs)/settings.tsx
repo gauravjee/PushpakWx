@@ -18,7 +18,10 @@ export default function Settings() {
   const { prefs, updatePrefs } = usePrefs();
   const router = useRouter();
   const [showDelete, setShowDelete] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<'form' | 'confirm'>('form');
+  const [deleteEmail, setDeleteEmail] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
+  const [deletePhrase, setDeletePhrase] = useState('');
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -42,20 +45,42 @@ export default function Settings() {
   };
 
   const openDelete = () => {
+    setDeleteStep('form');
+    setDeleteEmail('');
     setDeletePassword('');
+    setDeletePhrase('');
     setDeleteErr(null);
     setShowDelete(true);
   };
 
+  const continueToConfirm = () => {
+    setDeleteErr(null);
+    if (!deleteEmail.trim() || !deletePassword) {
+      setDeleteErr('Please enter your email and password');
+      return;
+    }
+    // Client-side check for immediate feedback — the backend independently
+    // verifies this same match (and the password) before actually deleting
+    // anything, so this isn't the only line of defense, just the fastest one.
+    if (deleteEmail.trim().toLowerCase() !== (user?.email || '').toLowerCase()) {
+      setDeleteErr("That email doesn't match your account");
+      return;
+    }
+    setDeleteErr(null);
+    setDeleteStep('confirm');
+  };
+
+  const CONFIRM_PHRASE = 'i am sure';
+
   const confirmDelete = async () => {
     setDeleteErr(null);
-    if (!deletePassword) {
-      setDeleteErr('Please enter your password');
+    if (deletePhrase.trim().toLowerCase() !== CONFIRM_PHRASE) {
+      setDeleteErr(`Please type "I am sure" exactly to confirm`);
       return;
     }
     setDeleting(true);
     try {
-      await deleteAccount(deletePassword);
+      await deleteAccount(deletePassword, deleteEmail.trim());
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setShowDelete(false);
       setShowDeleted(true);
@@ -216,46 +241,102 @@ export default function Settings() {
             <View style={styles.modalIcon}>
               <Ionicons name="warning" size={32} color={colors.error} />
             </View>
-            <Text style={styles.modalTitle}>Delete your account?</Text>
-            <Text style={styles.modalText}>
-              This will permanently delete your profile, saved airports, and all preferences.{'\n\n'}
-              This action cannot be undone.
-            </Text>
-            <View style={styles.confirmList}>
-              <ConfirmItem text="All saved airports will be removed" />
-              <ConfirmItem text="Your account cannot be recovered" />
-              <ConfirmItem text="You'll need to create a new account to use the app" />
-            </View>
-            <Text style={styles.modalLabel}>Enter your password to confirm</Text>
-            <TextInput
-              testID="delete-password-input"
-              style={styles.modalInput}
-              placeholder="Password"
-              placeholderTextColor={colors.onSurfaceTertiary}
-              value={deletePassword}
-              onChangeText={setDeletePassword}
-              secureTextEntry
-              autoFocus
-            />
-            {deleteErr ? <Text style={styles.modalErr} testID="delete-error">{deleteErr}</Text> : null}
-            <View style={styles.modalBtnRow}>
-              <Pressable
-                testID="delete-cancel-button"
-                onPress={() => setShowDelete(false)}
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                disabled={deleting}
-              >
-                <Text style={styles.modalBtnCancelText}>CANCEL</Text>
-              </Pressable>
-              <Pressable
-                testID="delete-confirm-button"
-                onPress={confirmDelete}
-                style={[styles.modalBtn, styles.modalBtnDanger, deleting && { opacity: 0.7 }]}
-                disabled={deleting}
-              >
-                {deleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalBtnDangerText}>DELETE</Text>}
-              </Pressable>
-            </View>
+
+            {deleteStep === 'form' && (
+              <>
+                <Text style={styles.modalTitle}>Delete your account?</Text>
+                <Text style={styles.modalText}>
+                  This will permanently delete your profile, saved airports, preferences, and your
+                  entire flight logbook — including all recorded flights and GPS tracks.{'\n\n'}
+                  This action cannot be undone.
+                </Text>
+                <View style={styles.confirmList}>
+                  <ConfirmItem text="Every flight you've logged will be permanently deleted" />
+                  <ConfirmItem text="All saved airports and preferences will be removed" />
+                  <ConfirmItem text="Your account cannot be recovered" />
+                </View>
+                <Text style={styles.modalLabel}>Enter your email to confirm</Text>
+                <TextInput
+                  testID="delete-email-input"
+                  style={styles.modalInput}
+                  placeholder={user?.email || 'Email'}
+                  placeholderTextColor={colors.onSurfaceTertiary}
+                  value={deleteEmail}
+                  onChangeText={setDeleteEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoFocus
+                />
+                <Text style={[styles.modalLabel, { marginTop: 12 }]}>Enter your password</Text>
+                <TextInput
+                  testID="delete-password-input"
+                  style={styles.modalInput}
+                  placeholder="Password"
+                  placeholderTextColor={colors.onSurfaceTertiary}
+                  value={deletePassword}
+                  onChangeText={setDeletePassword}
+                  secureTextEntry
+                />
+                {deleteErr ? <Text style={styles.modalErr} testID="delete-error">{deleteErr}</Text> : null}
+                <View style={styles.modalBtnRow}>
+                  <Pressable
+                    testID="delete-cancel-button"
+                    onPress={() => setShowDelete(false)}
+                    style={[styles.modalBtn, styles.modalBtnCancel]}
+                  >
+                    <Text style={styles.modalBtnCancelText}>CANCEL</Text>
+                  </Pressable>
+                  <Pressable
+                    testID="delete-continue-button"
+                    onPress={continueToConfirm}
+                    style={[styles.modalBtn, styles.modalBtnDanger]}
+                  >
+                    <Text style={styles.modalBtnDangerText}>CONTINUE</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+
+            {deleteStep === 'confirm' && (
+              <>
+                <Text style={styles.modalTitle}>Last step</Text>
+                <Text style={styles.modalText}>
+                  I understand that deleting my account will permanently delete all my data,
+                  including my flights, logbook entries, and account information, and that this
+                  cannot be undone.
+                </Text>
+                <Text style={styles.modalLabel}>Type "I am sure" to confirm</Text>
+                <TextInput
+                  testID="delete-phrase-input"
+                  style={styles.modalInput}
+                  placeholder="I am sure"
+                  placeholderTextColor={colors.onSurfaceTertiary}
+                  value={deletePhrase}
+                  onChangeText={setDeletePhrase}
+                  autoCapitalize="none"
+                  autoFocus
+                />
+                {deleteErr ? <Text style={styles.modalErr} testID="delete-error">{deleteErr}</Text> : null}
+                <View style={styles.modalBtnRow}>
+                  <Pressable
+                    testID="delete-back-button"
+                    onPress={() => { setDeleteStep('form'); setDeleteErr(null); }}
+                    style={[styles.modalBtn, styles.modalBtnCancel]}
+                    disabled={deleting}
+                  >
+                    <Text style={styles.modalBtnCancelText}>BACK</Text>
+                  </Pressable>
+                  <Pressable
+                    testID="delete-confirm-button"
+                    onPress={confirmDelete}
+                    style={[styles.modalBtn, styles.modalBtnDanger, deleting && { opacity: 0.7 }]}
+                    disabled={deleting}
+                  >
+                    {deleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalBtnDangerText}>DELETE MY ACCOUNT</Text>}
+                  </Pressable>
+                </View>
+              </>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
