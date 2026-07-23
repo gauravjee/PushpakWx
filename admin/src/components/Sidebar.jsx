@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom'
-import { logout } from '../api'
 
-export default function Sidebar({ email, onLogout }) {
+export default function Sidebar() {
   return (
     <div className="sidebar">
       <div className="brand-row">
@@ -21,19 +20,6 @@ export default function Sidebar({ email, onLogout }) {
       <NavLink to="/activity" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
         Activity
       </NavLink>
-
-      <div className="sidebar-footer">
-        <div className="sidebar-email">{email}</div>
-        <button
-          className="logout-btn"
-          onClick={() => {
-            logout()
-            onLogout()
-          }}
-        >
-          Sign out
-        </button>
-      </div>
     </div>
   )
 }

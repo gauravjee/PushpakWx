@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { isLoggedIn } from './api'
+import { isLoggedIn, logout } from './api'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -26,8 +26,20 @@ export default function App() {
     <HashRouter>
       <div className="app-shell">
         <div className="watermark" />
-        <Sidebar email={user?.email} onLogout={() => setLoggedIn(false)} />
+        <Sidebar />
         <div className="main">
+          <div className="admin-topbar">
+            {user?.email && <div className="admin-topbar-email">{user.email}</div>}
+            <button
+              className="logout-btn"
+              onClick={() => {
+                logout()
+                setLoggedIn(false)
+              }}
+            >
+              Sign out
+            </button>
+          </div>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/users" element={<Users />} />

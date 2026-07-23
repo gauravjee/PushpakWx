@@ -103,25 +103,27 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 .nav-link:hover { background: #ffffff08; color: var(--text); }
 .nav-link.active { background: var(--amber-dim); color: var(--amber); }
 
-.sidebar-footer {
-  margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+/* Slim header above the routed page content, showing the signed-in
+   user's email and sign-out button at top-right — replaces the old
+   bottom-of-sidebar placement per user request. */
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.sidebar-email {
-  font-size: 12px;
+.admin-topbar-email {
+  font-size: 13px;
   color: var(--text-dim);
-  margin-bottom: 8px;
-  word-break: break-all;
 }
 
 .logout-btn {
-  width: 100%;
   background: transparent;
   border: 1px solid var(--line);
   color: var(--text-dim);
-  padding: 8px 12px;
+  padding: 8px 16px;
   border-radius: var(--radius);
   font-size: 13px;
   cursor: pointer;
