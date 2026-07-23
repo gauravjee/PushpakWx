@@ -25,6 +25,7 @@ export default function App() {
   return (
     <HashRouter>
       <div className="app-shell">
+        <div className="watermark" />
         <Sidebar email={user?.email} onLogout={() => setLoggedIn(false)} />
         <div className="main">
           <Routes>

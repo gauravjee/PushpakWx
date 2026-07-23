@@ -236,16 +236,20 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }} edges={['top']} testID="dashboard-screen">
+      {/* Background logo watermark — matches the Pilot Portal and Admin
+          Panel's exact size (640x640) and opacity (5%) on web builds,
+          where RN's dp units map 1:1 to CSS px. See pilot-portal/src/styles.css
+          .watermark and admin/src/styles.css .watermark for the web equivalents. */}
       <Image
         source={require('../../assets/images/icon.png')}
         style={{
           position: 'absolute',
           top: '50%',
           left: '50%',
-          width: 440,
-          height: 440,
-          marginLeft: -220,
-          marginTop: -220,
+          width: 640,
+          height: 640,
+          marginLeft: -320,
+          marginTop: -320,
           opacity: 0.05,
         }}
         contentFit="contain"

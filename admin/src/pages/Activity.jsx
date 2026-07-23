@@ -41,11 +41,25 @@ export default function Activity() {
       <div className="panel">
         {!items && <div className="loading-state">Loading activity…</div>}
         {items && items.length === 0 && <div className="empty-state">No activity recorded yet.</div>}
+        {items && items.length > 0 && (
+          <div className="feed-item feed-header">
+            <div className="feed-time">TIME</div>
+            <div className="feed-type">TYPE</div>
+            <div className="feed-detail">DETAIL</div>
+            <div className="feed-user">PERFORMED BY</div>
+          </div>
+        )}
         {items && items.map((e) => (
           <div className="feed-item" key={e.id}>
             <div className="feed-time">{formatTime(e.created_at)}</div>
             <div className="feed-type">{e.type}</div>
             <div className="feed-detail">{describe(e)}</div>
+            {/* user_email is attached server-side to every event (see
+                admin_activity in server.py) but is null for events logged
+                before the auth-token fix, or for genuinely anonymous
+                (logged-out) weather lookups — both shown as "Anonymous"
+                rather than blank, so the column always reads clearly. */}
+            <div className="feed-user" title={e.user_email || 'Anonymous'}>{e.user_email || 'Anonymous'}</div>
           </div>
         ))}
       </div>
