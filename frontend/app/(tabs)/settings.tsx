@@ -242,7 +242,7 @@ export default function Settings() {
         </Section>
 
         <Text style={styles.copyright}>
-          © {new Date().getFullYear()} MaheSho Technologies LLP. All rights reserved.
+          © {new Date().getFullYear()} PushpakWx. All rights reserved.
         </Text>
 
         <Pressable testID="logout-button" onPress={onLogout} style={styles.logoutBtn}>
