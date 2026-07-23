@@ -6,6 +6,7 @@ import Overview from './pages/Overview'
 import FlightsList from './pages/FlightsList'
 import FlightDetail from './pages/FlightDetail'
 import FlightsMap from './pages/FlightsMap'
+import About from './pages/About'
 
 function Topbar({ onLogout }) {
   const user = getStoredUser()
@@ -36,6 +37,7 @@ function NavTabs() {
       <Link to="/" className={`nav-tab ${isActive('/') ? 'active' : ''}`}>Overview</Link>
       <Link to="/logbook" className={`nav-tab ${isActive('/logbook') ? 'active' : ''}`}>Logbook</Link>
       <Link to="/maps" className={`nav-tab ${isActive('/maps') ? 'active' : ''}`}>Maps</Link>
+      <Link to="/about" className={`nav-tab ${isActive('/about') ? 'active' : ''}`}>About</Link>
     </div>
   )
 }
@@ -59,6 +61,7 @@ export default function App() {
             <Route path="/logbook" element={<FlightsList />} />
             <Route path="/flights/:id" element={<FlightDetail />} />
             <Route path="/maps" element={<FlightsMap />} />
+            <Route path="/about" element={<About />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
