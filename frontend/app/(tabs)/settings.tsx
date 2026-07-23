@@ -325,8 +325,9 @@ export default function Settings() {
                 <Text style={styles.modalTitle}>Last step</Text>
                 <Text style={styles.modalText}>
                   I understand that deleting my account will permanently delete all my data,
-                  including my flights, logbook entries, and account information, and that this
-                  cannot be undone.
+                  including my{' '}
+                  <Text style={styles.modalTextEmphasis}>flights, logbook entries, and account information</Text>
+                  , and that this cannot be undone.
                 </Text>
                 <Text style={styles.modalLabel}>Type "I am sure" to confirm</Text>
                 <TextInput
@@ -372,12 +373,13 @@ export default function Settings() {
                 <Text style={styles.modalLabel}>Confirmation code</Text>
                 <TextInput
                   testID="delete-otp-input"
-                  style={styles.modalInput}
+                  style={styles.otpInput}
                   placeholder="000000"
                   placeholderTextColor={colors.onSurfaceTertiary}
                   value={deleteOtp}
                   onChangeText={(t) => setDeleteOtp(t.replace(/\D/g, '').slice(0, 6))}
                   keyboardType="number-pad"
+                  maxLength={6}
                   autoFocus
                 />
                 {deleteErr ? <Text style={styles.modalErr} testID="delete-error">{deleteErr}</Text> : null}
@@ -609,6 +611,23 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   },
   modalTitle: { color: colors.onSurface, fontSize: 20, fontWeight: '800', textAlign: 'center' },
   modalText: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 18, textAlign: 'center' },
+  modalTextEmphasis: { color: colors.error, fontWeight: '700' },
+  // Same large, letter-spaced treatment used for every other OTP field in
+  // the app (verify-email.tsx, reset-password.tsx) — red instead of the
+  // usual brand amber, matching the deletion-warning email's accent color.
+  otpInput: {
+    width: '100%',
+    backgroundColor: colors.surfaceSecondary,
+    color: colors.error,
+    borderRadius: radius.md,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 32,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 10,
+  },
   confirmList: { gap: spacing.sm, marginTop: spacing.sm },
   confirmItem: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   confirmItemText: { color: colors.onSurface, fontSize: 12, flex: 1 },
