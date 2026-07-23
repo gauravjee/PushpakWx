@@ -1631,7 +1631,11 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://pushpakwx.vercel.app",
+        "https://portal-pushpak.vercel.app",
+        "https://pushpak-admin.vercel.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
