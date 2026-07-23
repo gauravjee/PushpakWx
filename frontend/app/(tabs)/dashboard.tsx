@@ -242,10 +242,10 @@ export default function Dashboard() {
           position: 'absolute',
           top: '50%',
           left: '50%',
-          width: 280,
-          height: 280,
-          marginLeft: -140,
-          marginTop: -140,
+          width: 440,
+          height: 440,
+          marginLeft: -220,
+          marginTop: -220,
           opacity: 0.05,
         }}
         contentFit="contain"
