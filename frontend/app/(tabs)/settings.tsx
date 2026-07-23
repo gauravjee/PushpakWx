@@ -14,14 +14,15 @@ import { usePrefs } from '@/src/context/PrefsContext';
 export default function Settings() {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { user, logout, deleteAccount } = useAuth();
+  const { user, logout, requestAccountDeletion, confirmAccountDeletion } = useAuth();
   const { prefs, updatePrefs } = usePrefs();
   const router = useRouter();
   const [showDelete, setShowDelete] = useState(false);
-  const [deleteStep, setDeleteStep] = useState<'form' | 'confirm'>('form');
+  const [deleteStep, setDeleteStep] = useState<'form' | 'confirm' | 'otp'>('form');
   const [deleteEmail, setDeleteEmail] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deletePhrase, setDeletePhrase] = useState('');
+  const [deleteOtp, setDeleteOtp] = useState('');
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -49,6 +50,7 @@ export default function Settings() {
     setDeleteEmail('');
     setDeletePassword('');
     setDeletePhrase('');
+    setDeleteOtp('');
     setDeleteErr(null);
     setShowDelete(true);
   };
@@ -60,8 +62,8 @@ export default function Settings() {
       return;
     }
     // Client-side check for immediate feedback — the backend independently
-    // verifies this same match (and the password) before actually deleting
-    // anything, so this isn't the only line of defense, just the fastest one.
+    // verifies this same match (and the password) before sending any OTP,
+    // so this isn't the only line of defense, just the fastest one.
     if (deleteEmail.trim().toLowerCase() !== (user?.email || '').toLowerCase()) {
       setDeleteErr("That email doesn't match your account");
       return;
@@ -72,7 +74,7 @@ export default function Settings() {
 
   const CONFIRM_PHRASE = 'i am sure';
 
-  const confirmDelete = async () => {
+  const submitPhraseAndRequestOtp = async () => {
     setDeleteErr(null);
     if (deletePhrase.trim().toLowerCase() !== CONFIRM_PHRASE) {
       setDeleteErr(`Please type "I am sure" exactly to confirm`);
@@ -80,7 +82,28 @@ export default function Settings() {
     }
     setDeleting(true);
     try {
-      await deleteAccount(deletePassword, deleteEmail.trim());
+      // Only now — after both prior confirmations — does the backend
+      // re-verify password/email and actually send the OTP, so a code
+      // isn't emailed out just from someone reaching the first screen.
+      await requestAccountDeletion(deletePassword, deleteEmail.trim());
+      setDeleteOtp('');
+      setDeleteStep('otp');
+    } catch (e: any) {
+      setDeleteErr(e.message || 'Could not send confirmation code');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmOtpAndDelete = async () => {
+    setDeleteErr(null);
+    if (deleteOtp.trim().length < 6) {
+      setDeleteErr('Enter the 6-digit code from your email');
+      return;
+    }
+    setDeleting(true);
+    try {
+      await confirmAccountDeletion(deleteOtp.trim());
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setShowDelete(false);
       setShowDeleted(true);
@@ -327,8 +350,49 @@ export default function Settings() {
                     <Text style={styles.modalBtnCancelText}>BACK</Text>
                   </Pressable>
                   <Pressable
+                    testID="delete-request-otp-button"
+                    onPress={submitPhraseAndRequestOtp}
+                    style={[styles.modalBtn, styles.modalBtnDanger, deleting && { opacity: 0.7 }]}
+                    disabled={deleting}
+                  >
+                    {deleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalBtnDangerText}>SEND CONFIRMATION CODE</Text>}
+                  </Pressable>
+                </View>
+              </>
+            )}
+
+            {deleteStep === 'otp' && (
+              <>
+                <Text style={styles.modalTitle}>Confirm with the code we emailed you</Text>
+                <Text style={styles.modalText}>
+                  A confirmation code was sent to {user?.email}. Enter it below within 5 minutes to
+                  permanently delete your account. This is the final step — once confirmed, there is
+                  no way to undo it.
+                </Text>
+                <Text style={styles.modalLabel}>Confirmation code</Text>
+                <TextInput
+                  testID="delete-otp-input"
+                  style={styles.modalInput}
+                  placeholder="000000"
+                  placeholderTextColor={colors.onSurfaceTertiary}
+                  value={deleteOtp}
+                  onChangeText={(t) => setDeleteOtp(t.replace(/\D/g, '').slice(0, 6))}
+                  keyboardType="number-pad"
+                  autoFocus
+                />
+                {deleteErr ? <Text style={styles.modalErr} testID="delete-error">{deleteErr}</Text> : null}
+                <View style={styles.modalBtnRow}>
+                  <Pressable
+                    testID="delete-otp-back-button"
+                    onPress={() => { setDeleteStep('confirm'); setDeleteErr(null); }}
+                    style={[styles.modalBtn, styles.modalBtnCancel]}
+                    disabled={deleting}
+                  >
+                    <Text style={styles.modalBtnCancelText}>BACK</Text>
+                  </Pressable>
+                  <Pressable
                     testID="delete-confirm-button"
-                    onPress={confirmDelete}
+                    onPress={confirmOtpAndDelete}
                     style={[styles.modalBtn, styles.modalBtnDanger, deleting && { opacity: 0.7 }]}
                     disabled={deleting}
                   >

@@ -133,10 +133,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, code, new_password }),
     }),
-  deleteAccount: (password: string, confirmEmail: string) =>
-    request<{ message: string }>('/auth/delete-account', {
+  requestAccountDeletion: (password: string, confirmEmail: string) =>
+    request<{ message: string }>('/auth/delete-account/request', {
       method: 'POST',
       body: JSON.stringify({ password, confirm_email: confirmEmail }),
+    }, true),
+  confirmAccountDeletion: (code: string) =>
+    request<{ message: string }>('/auth/delete-account/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
     }, true),
   me: () => request<UserPublic>('/auth/me', {}, true),
   searchAirports: (q: string) =>

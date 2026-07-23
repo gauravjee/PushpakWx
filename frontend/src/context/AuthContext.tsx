@@ -9,7 +9,8 @@ type AuthState = {
   register: (email: string, password: string, full_name?: string) => Promise<{ email: string }>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
-  deleteAccount: (password: string, confirmEmail: string) => Promise<void>;
+  requestAccountDeletion: (password: string, confirmEmail: string) => Promise<void>;
+  confirmAccountDeletion: (code: string) => Promise<void>;
 };
 
 const AuthCtx = createContext<AuthState | undefined>(undefined);
@@ -55,14 +56,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const deleteAccount = useCallback(async (password: string, confirmEmail: string) => {
-    await api.deleteAccount(password, confirmEmail);
+  const requestAccountDeletion = useCallback(async (password: string, confirmEmail: string) => {
+    await api.requestAccountDeletion(password, confirmEmail);
+  }, []);
+
+  const confirmAccountDeletion = useCallback(async (code: string) => {
+    await api.confirmAccountDeletion(code);
     await storage.secureRemove(TOKEN_KEY);
     setUser(null);
   }, []);
 
   return (
-    <AuthCtx.Provider value={{ user, loading, login, register, verifyEmail, logout, deleteAccount }}>
+    <AuthCtx.Provider value={{ user, loading, login, register, verifyEmail, logout, requestAccountDeletion, confirmAccountDeletion }}>
       {children}
     </AuthCtx.Provider>
   );
