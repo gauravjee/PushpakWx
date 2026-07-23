@@ -143,9 +143,12 @@ class ResetPasswordRequest(BaseModel):
     code: str
     new_password: str
 
-class DeleteAccountRequest(BaseModel):
+class DeleteAccountRequestStart(BaseModel):
     password: str
     confirm_email: str
+
+class DeleteAccountConfirm(BaseModel):
+    code: str
 
 class UserPublic(BaseModel):
     id: str
@@ -338,8 +341,7 @@ def reset_email_html(code: str) -> str:
       <p style="color:#8A9198; font-size:12px;">If you didn't request a password reset, you can ignore this email.</p>
     </div>
     """
-
-async def create_and_send_otp(email: str, purpose: str, name: Optional[str] = None, enforce_cooldown: bool = True) -> str:
+async def create_and_send_otp(email: str, purpose: str, name: Optional[str] = None, enforce_cooldown: bool = True, expires_minutes: int = 15) -> str:
     """Create and send OTP. Enforces 60s cooldown per (email, purpose) if enforce_cooldown."""
     if enforce_cooldown:
         existing = await db.otps.find_one({"email": email, "purpose": purpose})
@@ -359,14 +361,45 @@ async def create_and_send_otp(email: str, purpose: str, name: Optional[str] = No
         "email": email,
         "purpose": purpose,
         "code": code,
-        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "attempts": 0,
     })
-    subject = "Verify your PushpakWX email" if purpose == "verify" else "Reset your PushpakWX password"
-    html = verification_email_html(code, name) if purpose == "verify" else reset_email_html(code)
+    if purpose == "verify":
+        subject = "Verify your PushpakWX email"
+        html = verification_email_html(code, name)
+    elif purpose == "delete_account":
+        subject = "Confirm deletion of your PushpakWX account"
+        html = delete_account_email_html(code, name)
+    else:
+        subject = "Reset your PushpakWX password"
+        html = reset_email_html(code)
     await send_email(email, subject, html)
     return code
+
+def delete_account_email_html(code: str, name: Optional[str] = None) -> str:
+    display = name or "Pilot"
+    return f"""
+    <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#111315; color:#fff; padding:32px; border-radius:12px; max-width:520px; margin:0 auto;">
+      <h1 style="color:#FF9F0A; letter-spacing:4px; margin:0 0 8px;">PUSHPAK<span style="color:#fff;">WX</span></h1>
+      <p style="color:#A1A6AB; letter-spacing:2px; font-size:11px; margin:0 0 24px;">ACCOUNT DELETION REQUEST</p>
+      <h2 style="color:#E5484D; margin:0 0 12px;">Confirm account deletion</h2>
+      <p style="color:#A1A6AB; line-height:1.6;">
+        Hi {display}, we received a request to permanently delete your PushpakWx account, and it was
+        authenticated with your password. If this was you, enter the code below within 5 minutes to
+        confirm.
+      </p>
+      <div style="background:#1C1F22; border:1px solid #E5484D; padding:20px; border-radius:8px; text-align:center; margin:24px 0;">
+        <div style="color:#E5484D; font-size:36px; letter-spacing:12px; font-weight:800;">{code}</div>
+      </div>
+      <p style="color:#E5484D; font-size:13px; line-height:1.6; font-weight:600;">
+        Once confirmed, your account and all associated data — including your flights, logbook
+        entries, and saved preferences — will be permanently deleted from our servers. This action
+        cannot be undone.
+      </p>
+      <p style="color:#8A9198; font-size:12px;">If you didn't request this, no action is needed — your account remains safe, and this code will simply expire.</p>
+    </div>
+    """
 
 async def verify_otp(email: str, code: str, purpose: str) -> bool:
     doc = await db.otps.find_one({"email": email, "purpose": purpose})
@@ -559,12 +592,23 @@ async def me(user: dict = Depends(get_current_user)):
         created_at=user["created_at"], email_verified=user.get("email_verified", False),
     )
 
-@api_router.post("/auth/delete-account")
-async def delete_account(payload: DeleteAccountRequest, user: dict = Depends(get_current_user)):
+@api_router.post("/auth/delete-account/request")
+@limiter.limit("5/hour")
+async def delete_account_request(request: Request, payload: DeleteAccountRequestStart, user: dict = Depends(get_current_user)):
     if payload.confirm_email.strip().lower() != user["email"].lower():
         raise HTTPException(status_code=400, detail="Email confirmation does not match your account email")
     if not verify_password(payload.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect password")
+    await create_and_send_otp(user["email"], "delete_account", user.get("full_name"), expires_minutes=5)
+    return {"message": "A confirmation code has been sent to your email. It expires in 5 minutes."}
+
+
+@api_router.post("/auth/delete-account/confirm")
+@limiter.limit("5/hour")
+async def delete_account_confirm(request: Request, payload: DeleteAccountConfirm, user: dict = Depends(get_current_user)):
+    ok = await verify_otp(user["email"], payload.code, "delete_account")
+    if not ok:
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation code")
     user_id = user["id"]
     email = user["email"]
 
@@ -575,11 +619,13 @@ async def delete_account(payload: DeleteAccountRequest, user: dict = Depends(get
         "deleted_at": datetime.now(timezone.utc).isoformat(),
     })
 
+    await db.events.delete_many({"user_id": user_id, "type": {"$in": ["metar", "taf", "weather_forecast"]}})
+    await log_event("account_deleted", user_id=user_id)
+
     await db.favorites.delete_many({"user_id": user_id})
     await db.prefs.delete_many({"user_id": user_id})
     await db.otps.delete_many({"email": email})
     await db.flights.delete_many({"user_id": user_id})
-    await db.events.delete_many({"user_id": user_id})
     await db.users.delete_one({"id": user_id})
     return {"message": "Account and all associated data deleted successfully"}
 
