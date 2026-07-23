@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
+from contextlib import asynccontextmanager
 import uuid
 #---Adding import re first fix --- vulnurability check
 import re
@@ -34,6 +35,69 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# ============= AIRPORT SEED =============
+
+AIRPORTS_SEED: List[dict] = [
+    {"icao": "KJFK", "iata": "JFK", "name": "John F Kennedy Intl", "city": "New York", "country": "US", "lat": 40.6413, "lon": -73.7781, "elevation_ft": 13},
+    {"icao": "KLAX", "iata": "LAX", "name": "Los Angeles Intl", "city": "Los Angeles", "country": "US", "lat": 33.9416, "lon": -118.4085, "elevation_ft": 125},
+    {"icao": "KSFO", "iata": "SFO", "name": "San Francisco Intl", "city": "San Francisco", "country": "US", "lat": 37.6213, "lon": -122.3790, "elevation_ft": 13},
+    {"icao": "KORD", "iata": "ORD", "name": "Chicago O'Hare Intl", "city": "Chicago", "country": "US", "lat": 41.9742, "lon": -87.9073, "elevation_ft": 672},
+    {"icao": "KDFW", "iata": "DFW", "name": "Dallas Fort Worth Intl", "city": "Dallas", "country": "US", "lat": 32.8998, "lon": -97.0403, "elevation_ft": 607},
+    {"icao": "KATL", "iata": "ATL", "name": "Hartsfield Jackson Atlanta Intl", "city": "Atlanta", "country": "US", "lat": 33.6407, "lon": -84.4277, "elevation_ft": 1026},
+    {"icao": "KSEA", "iata": "SEA", "name": "Seattle Tacoma Intl", "city": "Seattle", "country": "US", "lat": 47.4502, "lon": -122.3088, "elevation_ft": 433},
+    {"icao": "KBOS", "iata": "BOS", "name": "Logan Intl", "city": "Boston", "country": "US", "lat": 42.3656, "lon": -71.0096, "elevation_ft": 20},
+    {"icao": "KDEN", "iata": "DEN", "name": "Denver Intl", "city": "Denver", "country": "US", "lat": 39.8561, "lon": -104.6737, "elevation_ft": 5431},
+    {"icao": "KMIA", "iata": "MIA", "name": "Miami Intl", "city": "Miami", "country": "US", "lat": 25.7959, "lon": -80.2870, "elevation_ft": 8},
+    {"icao": "KLAS", "iata": "LAS", "name": "Harry Reid Intl", "city": "Las Vegas", "country": "US", "lat": 36.0840, "lon": -115.1537, "elevation_ft": 2181},
+    {"icao": "KPHX", "iata": "PHX", "name": "Phoenix Sky Harbor Intl", "city": "Phoenix", "country": "US", "lat": 33.4342, "lon": -112.0116, "elevation_ft": 1135},
+    {"icao": "EGLL", "iata": "LHR", "name": "London Heathrow", "city": "London", "country": "GB", "lat": 51.4700, "lon": -0.4543, "elevation_ft": 83},
+    {"icao": "EGKK", "iata": "LGW", "name": "London Gatwick", "city": "London", "country": "GB", "lat": 51.1537, "lon": -0.1821, "elevation_ft": 202},
+    {"icao": "LFPG", "iata": "CDG", "name": "Paris Charles de Gaulle", "city": "Paris", "country": "FR", "lat": 49.0097, "lon": 2.5479, "elevation_ft": 392},
+    {"icao": "EDDF", "iata": "FRA", "name": "Frankfurt am Main", "city": "Frankfurt", "country": "DE", "lat": 50.0379, "lon": 8.5622, "elevation_ft": 364},
+    {"icao": "EHAM", "iata": "AMS", "name": "Amsterdam Schiphol", "city": "Amsterdam", "country": "NL", "lat": 52.3105, "lon": 4.7683, "elevation_ft": -11},
+    {"icao": "LEMD", "iata": "MAD", "name": "Madrid Barajas", "city": "Madrid", "country": "ES", "lat": 40.4936, "lon": -3.5668, "elevation_ft": 1998},
+    {"icao": "LIRF", "iata": "FCO", "name": "Rome Fiumicino", "city": "Rome", "country": "IT", "lat": 41.8003, "lon": 12.2389, "elevation_ft": 13},
+    {"icao": "LSZH", "iata": "ZRH", "name": "Zurich", "city": "Zurich", "country": "CH", "lat": 47.4647, "lon": 8.5492, "elevation_ft": 1416},
+    {"icao": "OMDB", "iata": "DXB", "name": "Dubai Intl", "city": "Dubai", "country": "AE", "lat": 25.2532, "lon": 55.3657, "elevation_ft": 62},
+    {"icao": "OTHH", "iata": "DOH", "name": "Hamad Intl", "city": "Doha", "country": "QA", "lat": 25.2731, "lon": 51.6080, "elevation_ft": 13},
+    {"icao": "VIDP", "iata": "DEL", "name": "Indira Gandhi Intl", "city": "New Delhi", "country": "IN", "lat": 28.5562, "lon": 77.1000, "elevation_ft": 777},
+    {"icao": "VABB", "iata": "BOM", "name": "Chhatrapati Shivaji Intl", "city": "Mumbai", "country": "IN", "lat": 19.0896, "lon": 72.8656, "elevation_ft": 39},
+    {"icao": "VOBL", "iata": "BLR", "name": "Kempegowda Intl", "city": "Bangalore", "country": "IN", "lat": 13.1986, "lon": 77.7066, "elevation_ft": 3000},
+    {"icao": "VOMM", "iata": "MAA", "name": "Chennai Intl", "city": "Chennai", "country": "IN", "lat": 12.9941, "lon": 80.1709, "elevation_ft": 52},
+    {"icao": "VHHH", "iata": "HKG", "name": "Hong Kong Intl", "city": "Hong Kong", "country": "HK", "lat": 22.3080, "lon": 113.9185, "elevation_ft": 28},
+    {"icao": "RJTT", "iata": "HND", "name": "Tokyo Haneda", "city": "Tokyo", "country": "JP", "lat": 35.5494, "lon": 139.7798, "elevation_ft": 35},
+    {"icao": "RJAA", "iata": "NRT", "name": "Tokyo Narita", "city": "Tokyo", "country": "JP", "lat": 35.7647, "lon": 140.3864, "elevation_ft": 141},
+    {"icao": "WSSS", "iata": "SIN", "name": "Singapore Changi", "city": "Singapore", "country": "SG", "lat": 1.3644, "lon": 103.9915, "elevation_ft": 22},
+    {"icao": "YSSY", "iata": "SYD", "name": "Sydney Kingsford Smith", "city": "Sydney", "country": "AU", "lat": -33.9399, "lon": 151.1753, "elevation_ft": 21},
+    {"icao": "YMML", "iata": "MEL", "name": "Melbourne", "city": "Melbourne", "country": "AU", "lat": -37.6690, "lon": 144.8410, "elevation_ft": 434},
+    {"icao": "CYYZ", "iata": "YYZ", "name": "Toronto Pearson Intl", "city": "Toronto", "country": "CA", "lat": 43.6777, "lon": -79.6248, "elevation_ft": 569},
+    {"icao": "CYVR", "iata": "YVR", "name": "Vancouver Intl", "city": "Vancouver", "country": "CA", "lat": 49.1967, "lon": -123.1815, "elevation_ft": 14},
+    {"icao": "SBGR", "iata": "GRU", "name": "São Paulo/Guarulhos", "city": "São Paulo", "country": "BR", "lat": -23.4356, "lon": -46.4731, "elevation_ft": 2459},
+    {"icao": "MMMX", "iata": "MEX", "name": "Mexico City Intl", "city": "Mexico City", "country": "MX", "lat": 19.4363, "lon": -99.0721, "elevation_ft": 7316},
+    {"icao": "FAOR", "iata": "JNB", "name": "OR Tambo Intl", "city": "Johannesburg", "country": "ZA", "lat": -26.1392, "lon": 28.2460, "elevation_ft": 5558},
+    {"icao": "HECA", "iata": "CAI", "name": "Cairo Intl", "city": "Cairo", "country": "EG", "lat": 30.1219, "lon": 31.4056, "elevation_ft": 382},
+    {"icao": "UUEE", "iata": "SVO", "name": "Sheremetyevo Intl", "city": "Moscow", "country": "RU", "lat": 55.9726, "lon": 37.4146, "elevation_ft": 622},
+    {"icao": "ZBAA", "iata": "PEK", "name": "Beijing Capital Intl", "city": "Beijing", "country": "CN", "lat": 40.0801, "lon": 116.5846, "elevation_ft": 116},
+    {"icao": "ZSPD", "iata": "PVG", "name": "Shanghai Pudong Intl", "city": "Shanghai", "country": "CN", "lat": 31.1443, "lon": 121.8083, "elevation_ft": 13},
+    {"icao": "RKSI", "iata": "ICN", "name": "Incheon Intl", "city": "Seoul", "country": "KR", "lat": 37.4602, "lon": 126.4407, "elevation_ft": 23},
+    {"icao": "KTEB", "iata": "TEB", "name": "Teterboro", "city": "Teterboro", "country": "US", "lat": 40.8501, "lon": -74.0608, "elevation_ft": 9},
+    {"icao": "KHPN", "iata": "HPN", "name": "Westchester County", "city": "White Plains", "country": "US", "lat": 41.0670, "lon": -73.7076, "elevation_ft": 439},
+    {"icao": "KPAO", "iata": None, "name": "Palo Alto", "city": "Palo Alto", "country": "US", "lat": 37.4611, "lon": -122.1150, "elevation_ft": 6},
+    {"icao": "KRHV", "iata": None, "name": "Reid Hillview", "city": "San Jose", "country": "US", "lat": 37.3329, "lon": -121.8194, "elevation_ft": 133},
+]
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup (replaces the old @app.on_event("startup") handler)  ---- TO BE DELETED AFTER TESTING
+    if await db.airports.count_documents({}) == 0:
+        await db.airports.insert_many([{**a} for a in AIRPORTS_SEED])
+    await db.airports.create_index("icao", unique=True)
+    await db.users.create_index("email", unique=True)
+    yield
+    # Shutdown (replaces the old @app.on_event("shutdown") handler)
+    client.close()
+
+
 # JWT
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
@@ -43,7 +107,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 FROM_EMAIL = os.environ.get('FROM_EMAIL', 'onboarding@resend.dev')
 
-app = FastAPI(title="PushpakWX API")
+#app = FastAPI(title="PushpakWX API")
+app = FastAPI(title="PushpakWX API", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
@@ -318,63 +383,7 @@ async def verify_otp(email: str, code: str, purpose: str) -> bool:
     await db.otps.delete_one({"email": email, "purpose": purpose})
     return True
 
-# ============= AIRPORT SEED =============
 
-AIRPORTS_SEED: List[dict] = [
-    {"icao": "KJFK", "iata": "JFK", "name": "John F Kennedy Intl", "city": "New York", "country": "US", "lat": 40.6413, "lon": -73.7781, "elevation_ft": 13},
-    {"icao": "KLAX", "iata": "LAX", "name": "Los Angeles Intl", "city": "Los Angeles", "country": "US", "lat": 33.9416, "lon": -118.4085, "elevation_ft": 125},
-    {"icao": "KSFO", "iata": "SFO", "name": "San Francisco Intl", "city": "San Francisco", "country": "US", "lat": 37.6213, "lon": -122.3790, "elevation_ft": 13},
-    {"icao": "KORD", "iata": "ORD", "name": "Chicago O'Hare Intl", "city": "Chicago", "country": "US", "lat": 41.9742, "lon": -87.9073, "elevation_ft": 672},
-    {"icao": "KDFW", "iata": "DFW", "name": "Dallas Fort Worth Intl", "city": "Dallas", "country": "US", "lat": 32.8998, "lon": -97.0403, "elevation_ft": 607},
-    {"icao": "KATL", "iata": "ATL", "name": "Hartsfield Jackson Atlanta Intl", "city": "Atlanta", "country": "US", "lat": 33.6407, "lon": -84.4277, "elevation_ft": 1026},
-    {"icao": "KSEA", "iata": "SEA", "name": "Seattle Tacoma Intl", "city": "Seattle", "country": "US", "lat": 47.4502, "lon": -122.3088, "elevation_ft": 433},
-    {"icao": "KBOS", "iata": "BOS", "name": "Logan Intl", "city": "Boston", "country": "US", "lat": 42.3656, "lon": -71.0096, "elevation_ft": 20},
-    {"icao": "KDEN", "iata": "DEN", "name": "Denver Intl", "city": "Denver", "country": "US", "lat": 39.8561, "lon": -104.6737, "elevation_ft": 5431},
-    {"icao": "KMIA", "iata": "MIA", "name": "Miami Intl", "city": "Miami", "country": "US", "lat": 25.7959, "lon": -80.2870, "elevation_ft": 8},
-    {"icao": "KLAS", "iata": "LAS", "name": "Harry Reid Intl", "city": "Las Vegas", "country": "US", "lat": 36.0840, "lon": -115.1537, "elevation_ft": 2181},
-    {"icao": "KPHX", "iata": "PHX", "name": "Phoenix Sky Harbor Intl", "city": "Phoenix", "country": "US", "lat": 33.4342, "lon": -112.0116, "elevation_ft": 1135},
-    {"icao": "EGLL", "iata": "LHR", "name": "London Heathrow", "city": "London", "country": "GB", "lat": 51.4700, "lon": -0.4543, "elevation_ft": 83},
-    {"icao": "EGKK", "iata": "LGW", "name": "London Gatwick", "city": "London", "country": "GB", "lat": 51.1537, "lon": -0.1821, "elevation_ft": 202},
-    {"icao": "LFPG", "iata": "CDG", "name": "Paris Charles de Gaulle", "city": "Paris", "country": "FR", "lat": 49.0097, "lon": 2.5479, "elevation_ft": 392},
-    {"icao": "EDDF", "iata": "FRA", "name": "Frankfurt am Main", "city": "Frankfurt", "country": "DE", "lat": 50.0379, "lon": 8.5622, "elevation_ft": 364},
-    {"icao": "EHAM", "iata": "AMS", "name": "Amsterdam Schiphol", "city": "Amsterdam", "country": "NL", "lat": 52.3105, "lon": 4.7683, "elevation_ft": -11},
-    {"icao": "LEMD", "iata": "MAD", "name": "Madrid Barajas", "city": "Madrid", "country": "ES", "lat": 40.4936, "lon": -3.5668, "elevation_ft": 1998},
-    {"icao": "LIRF", "iata": "FCO", "name": "Rome Fiumicino", "city": "Rome", "country": "IT", "lat": 41.8003, "lon": 12.2389, "elevation_ft": 13},
-    {"icao": "LSZH", "iata": "ZRH", "name": "Zurich", "city": "Zurich", "country": "CH", "lat": 47.4647, "lon": 8.5492, "elevation_ft": 1416},
-    {"icao": "OMDB", "iata": "DXB", "name": "Dubai Intl", "city": "Dubai", "country": "AE", "lat": 25.2532, "lon": 55.3657, "elevation_ft": 62},
-    {"icao": "OTHH", "iata": "DOH", "name": "Hamad Intl", "city": "Doha", "country": "QA", "lat": 25.2731, "lon": 51.6080, "elevation_ft": 13},
-    {"icao": "VIDP", "iata": "DEL", "name": "Indira Gandhi Intl", "city": "New Delhi", "country": "IN", "lat": 28.5562, "lon": 77.1000, "elevation_ft": 777},
-    {"icao": "VABB", "iata": "BOM", "name": "Chhatrapati Shivaji Intl", "city": "Mumbai", "country": "IN", "lat": 19.0896, "lon": 72.8656, "elevation_ft": 39},
-    {"icao": "VOBL", "iata": "BLR", "name": "Kempegowda Intl", "city": "Bangalore", "country": "IN", "lat": 13.1986, "lon": 77.7066, "elevation_ft": 3000},
-    {"icao": "VOMM", "iata": "MAA", "name": "Chennai Intl", "city": "Chennai", "country": "IN", "lat": 12.9941, "lon": 80.1709, "elevation_ft": 52},
-    {"icao": "VHHH", "iata": "HKG", "name": "Hong Kong Intl", "city": "Hong Kong", "country": "HK", "lat": 22.3080, "lon": 113.9185, "elevation_ft": 28},
-    {"icao": "RJTT", "iata": "HND", "name": "Tokyo Haneda", "city": "Tokyo", "country": "JP", "lat": 35.5494, "lon": 139.7798, "elevation_ft": 35},
-    {"icao": "RJAA", "iata": "NRT", "name": "Tokyo Narita", "city": "Tokyo", "country": "JP", "lat": 35.7647, "lon": 140.3864, "elevation_ft": 141},
-    {"icao": "WSSS", "iata": "SIN", "name": "Singapore Changi", "city": "Singapore", "country": "SG", "lat": 1.3644, "lon": 103.9915, "elevation_ft": 22},
-    {"icao": "YSSY", "iata": "SYD", "name": "Sydney Kingsford Smith", "city": "Sydney", "country": "AU", "lat": -33.9399, "lon": 151.1753, "elevation_ft": 21},
-    {"icao": "YMML", "iata": "MEL", "name": "Melbourne", "city": "Melbourne", "country": "AU", "lat": -37.6690, "lon": 144.8410, "elevation_ft": 434},
-    {"icao": "CYYZ", "iata": "YYZ", "name": "Toronto Pearson Intl", "city": "Toronto", "country": "CA", "lat": 43.6777, "lon": -79.6248, "elevation_ft": 569},
-    {"icao": "CYVR", "iata": "YVR", "name": "Vancouver Intl", "city": "Vancouver", "country": "CA", "lat": 49.1967, "lon": -123.1815, "elevation_ft": 14},
-    {"icao": "SBGR", "iata": "GRU", "name": "São Paulo/Guarulhos", "city": "São Paulo", "country": "BR", "lat": -23.4356, "lon": -46.4731, "elevation_ft": 2459},
-    {"icao": "MMMX", "iata": "MEX", "name": "Mexico City Intl", "city": "Mexico City", "country": "MX", "lat": 19.4363, "lon": -99.0721, "elevation_ft": 7316},
-    {"icao": "FAOR", "iata": "JNB", "name": "OR Tambo Intl", "city": "Johannesburg", "country": "ZA", "lat": -26.1392, "lon": 28.2460, "elevation_ft": 5558},
-    {"icao": "HECA", "iata": "CAI", "name": "Cairo Intl", "city": "Cairo", "country": "EG", "lat": 30.1219, "lon": 31.4056, "elevation_ft": 382},
-    {"icao": "UUEE", "iata": "SVO", "name": "Sheremetyevo Intl", "city": "Moscow", "country": "RU", "lat": 55.9726, "lon": 37.4146, "elevation_ft": 622},
-    {"icao": "ZBAA", "iata": "PEK", "name": "Beijing Capital Intl", "city": "Beijing", "country": "CN", "lat": 40.0801, "lon": 116.5846, "elevation_ft": 116},
-    {"icao": "ZSPD", "iata": "PVG", "name": "Shanghai Pudong Intl", "city": "Shanghai", "country": "CN", "lat": 31.1443, "lon": 121.8083, "elevation_ft": 13},
-    {"icao": "RKSI", "iata": "ICN", "name": "Incheon Intl", "city": "Seoul", "country": "KR", "lat": 37.4602, "lon": 126.4407, "elevation_ft": 23},
-    {"icao": "KTEB", "iata": "TEB", "name": "Teterboro", "city": "Teterboro", "country": "US", "lat": 40.8501, "lon": -74.0608, "elevation_ft": 9},
-    {"icao": "KHPN", "iata": "HPN", "name": "Westchester County", "city": "White Plains", "country": "US", "lat": 41.0670, "lon": -73.7076, "elevation_ft": 439},
-    {"icao": "KPAO", "iata": None, "name": "Palo Alto", "city": "Palo Alto", "country": "US", "lat": 37.4611, "lon": -122.1150, "elevation_ft": 6},
-    {"icao": "KRHV", "iata": None, "name": "Reid Hillview", "city": "San Jose", "country": "US", "lat": 37.3329, "lon": -121.8194, "elevation_ft": 133},
-]
-
-@app.on_event("startup")
-async def seed_airports():
-    if await db.airports.count_documents({}) == 0:
-        await db.airports.insert_many([{**a} for a in AIRPORTS_SEED])
-    await db.airports.create_index("icao", unique=True)
-    await db.users.create_index("email", unique=True)
 
 # ============= ROUTES =============
 
@@ -1199,7 +1208,8 @@ def _csv_escape(value: str) -> str:
 @api_router.get("/flights/{flight_id}/export")
 async def export_flight(
     flight_id: str,
-    format: str = Query("csv", regex="^(csv|geojson|dgca_csv|faa_csv)$"),
+    #format: str = Query("csv", regex="^(csv|geojson|dgca_csv|faa_csv)$"), -- TO BE DELETED AFTER TESTING
+    format: str = Query("csv", pattern="^(csv|geojson|dgca_csv|faa_csv)$"),
     user: dict = Depends(get_current_user),
 ):
     f = await db.flights.find_one(
@@ -1571,7 +1581,7 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+# to be DELETED AFTER TESTING
+#@app.on_event("shutdown")
+#async def shutdown_db_client():
+#    client.close()
