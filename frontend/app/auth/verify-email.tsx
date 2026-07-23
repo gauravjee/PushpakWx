@@ -1,17 +1,21 @@
+/**
+ * OTP entry screen shown right after registration. The large, letter-spaced
+ * code input style here is the reference every other OTP field in the
+ * project (reset-password.tsx, and the Pilot Portal's verify/forgot-reset
+ * modes) was built to match — keep them in sync if this changes.
+ */
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius } from '@/src/theme';
 import { useAuth } from '@/src/context/AuthContext';
 import { api } from '@/src/api/client';
 
-const BG = 'https://images.unsplash.com/photo-1554137496-a7b5bf064531?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwxfHxydW53YXklMjBhcHByb2FjaCUyMGxpZ2h0cyUyMG5pZ2h0fGVufDB8fHx8MTc4MzkzMDA3NHww&ixlib=rb-4.1.0&q=85';
+const noOutline: any = { outlineStyle: 'none' }; // see login.tsx for why this exists
 
 export default function VerifyEmail() {
   const { verifyEmail } = useAuth();
@@ -19,6 +23,7 @@ export default function VerifyEmail() {
   const params = useLocalSearchParams<{ email?: string }>();
   const email = (params.email as string) || '';
   const [code, setCode] = useState('');
+  const [codeFocused, setCodeFocused] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,32 +63,25 @@ export default function VerifyEmail() {
 
   return (
     <View style={styles.wrap} testID="verify-email-screen">
-      <Image source={BG} style={StyleSheet.absoluteFill} contentFit="cover" />
-      <LinearGradient
-        colors={['rgba(17,19,21,0.5)', 'rgba(17,19,21,0.9)', 'rgba(17,19,21,1)']}
-        style={StyleSheet.absoluteFill}
-      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()} style={styles.backBtn} testID="verify-back-button">
-            <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
-          </Pressable>
-          <View style={styles.header}>
-            <Ionicons name="mail-open-outline" size={48} color={colors.brand} />
-            <Text style={styles.title}>Verify your email</Text>
-            <Text style={styles.sub}>
-              We sent a 6-digit code to{'\n'}
-              <Text style={styles.email}>{email}</Text>
+          <View style={styles.card}>
+            <Ionicons name="mail-open-outline" size={44} color={colors.brand} style={{ marginBottom: 16 }} />
+            <Text style={styles.brand}>Verify your email</Text>
+            <Text style={styles.tag}>
+              We sent a 6-digit code to{'\n'}<Text style={{ color: colors.brand, fontWeight: '700' }}>{email}</Text>
             </Text>
-          </View>
-          <View style={styles.form}>
+
+            <Text style={styles.label}>VERIFICATION CODE</Text>
             <TextInput
               testID="verify-code-input"
-              style={styles.codeInput}
+              style={[styles.codeInput, noOutline, codeFocused && styles.inputFocused]}
               placeholder="000000"
               placeholderTextColor={colors.onSurfaceTertiary}
               value={code}
               onChangeText={t => setCode(t.replace(/\D/g, '').slice(0, 6))}
+              onFocus={() => setCodeFocused(true)}
+              onBlur={() => setCodeFocused(false)}
               keyboardType="number-pad"
               maxLength={6}
               autoFocus
@@ -98,8 +96,8 @@ export default function VerifyEmail() {
             >
               {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.ctaText}>VERIFY & CONTINUE</Text>}
             </Pressable>
-            <Pressable testID="resend-code-button" onPress={onResend} disabled={resending} style={styles.resendBtn}>
-              <Text style={styles.resendText}>
+            <Pressable testID="resend-code-button" onPress={onResend} disabled={resending} style={styles.secondaryBtn}>
+              <Text style={styles.linkText}>
                 {resending ? 'Sending...' : "Didn't get the code? Resend"}
               </Text>
             </Pressable>
@@ -112,18 +110,30 @@ export default function VerifyEmail() {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.surface },
-  scroll: { flexGrow: 1, padding: spacing.xl, paddingTop: spacing.xxxl + 24 },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: colors.surfaceSecondary },
-  header: { alignItems: 'center', marginTop: spacing.xxl, gap: spacing.md },
-  title: { color: colors.onSurface, fontSize: 24, fontWeight: '800', letterSpacing: 1 },
-  sub: { color: colors.onSurfaceSecondary, textAlign: 'center', lineHeight: 20, fontSize: 14 },
-  email: { color: colors.brand, fontWeight: '700' },
-  form: { marginTop: 'auto', gap: spacing.md },
+  scroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
+  card: {
+    width: 360,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopWidth: 3,
+    borderTopColor: colors.brand,
+    padding: 40,
+    alignItems: 'center',
+  },
+  brand: { color: colors.onSurface, fontSize: 22, fontWeight: '700', marginBottom: 4, textAlign: 'center' },
+  tag: { color: colors.onSurfaceSecondary, fontSize: 13, marginBottom: 28, textAlign: 'center', lineHeight: 19 },
+  label: {
+    alignSelf: 'flex-start', color: colors.onSurfaceTertiary, fontSize: 11,
+    letterSpacing: 1, marginBottom: 6, marginTop: spacing.md,
+  },
   codeInput: {
+    width: '100%',
     backgroundColor: colors.surfaceSecondary,
     color: colors.brand,
     borderRadius: radius.md,
-    padding: spacing.lg,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
     fontSize: 32,
@@ -131,10 +141,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 10,
   },
-  err: { color: colors.error, fontSize: 13, textAlign: 'center' },
-  info: { color: colors.success, fontSize: 13, textAlign: 'center' },
-  cta: { backgroundColor: colors.brand, borderRadius: radius.md, padding: 16, alignItems: 'center' },
+  inputFocused: { borderColor: colors.brand },
+  err: { color: colors.error, fontSize: 13, marginTop: spacing.sm, textAlign: 'center' },
+  info: { color: colors.success, fontSize: 13, marginTop: spacing.sm, textAlign: 'center' },
+  cta: {
+    width: '100%',
+    backgroundColor: colors.brand,
+    borderRadius: radius.md,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
   ctaText: { color: '#000', fontWeight: '800', letterSpacing: 2, fontSize: 15 },
-  resendBtn: { padding: spacing.md, alignItems: 'center' },
-  resendText: { color: colors.onSurfaceSecondary, fontSize: 13 },
+  secondaryBtn: { marginTop: spacing.lg, alignItems: 'center' },
+  linkText: { color: colors.onSurfaceSecondary, fontSize: 13, textDecorationLine: 'underline' },
 });

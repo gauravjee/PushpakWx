@@ -343,6 +343,9 @@ tr:last-child td { border-bottom: none; }
 .feed-detail { color: var(--text-dim); }
 
 /* ---------- Login page ---------- */
+/* Card dimensions (360px width, 40px padding, 3px brand-colored top
+   border) are kept in sync with the Main App's login.tsx and Pilot
+   Portal's Login.jsx — update all three if this shared look changes. */
 .login-shell {
   min-height: 100vh;
   display: flex;
@@ -353,10 +356,10 @@ tr:last-child td { border-bottom: none; }
 .login-card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-top: 2px solid var(--amber);
+  border-top: 3px solid var(--amber);
   border-radius: var(--radius);
   padding: 40px;
-  width: 340px;
+  width: 360px;
 }
 
 .login-logo {
@@ -400,6 +403,16 @@ tr:last-child td { border-bottom: none; }
   margin-bottom: 18px;
 }
 .field-input:focus { border-color: var(--amber); }
+
+/* Wraps the password <input> with an eye-icon toggle positioned inside
+   its right edge — same pattern as the Pilot Portal's Login.jsx. */
+.password-wrap { position: relative; display: flex; align-items: center; }
+.password-wrap input { padding-right: 40px; }
+.password-eye-btn {
+  position: absolute; right: 10px; top: 10px; background: none; border: none; padding: 4px;
+  cursor: pointer; color: var(--text-dim); display: flex; align-items: center;
+}
+.password-eye-btn:hover { color: var(--amber); }
 
 .login-btn {
   width: 100%;

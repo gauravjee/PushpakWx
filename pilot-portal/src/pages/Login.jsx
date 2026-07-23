@@ -1,5 +1,57 @@
+/**
+ * Pilot Portal login screen — a single component covering 5 modes (sign
+ * in, register, email verification, forgot-password request, and
+ * forgot-password reset), switched via the `mode` state below rather than
+ * separate routes/pages. All modes render inside the same .login-card,
+ * whose dimensions (360px, 40px padding, 3px top border) are kept in sync
+ * with the Main App's login.tsx and the Admin Panel's Login.jsx — update
+ * all three together if the shared look changes.
+ *
+ * Calls the exact same backend auth endpoints as the Main App
+ * (see src/api.js), so an account created in one place works in all three.
+ */
 import { useState } from 'react'
 import { login, register, verifyEmail, resendVerification, forgotPassword, resetPassword } from '../api'
+
+// Simple inline SVG eye / eye-off icons (Feather-style paths) — kept
+// dependency-free rather than pulling in an icon library for just these two.
+function EyeIcon({ off }) {
+  return off ? (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+// Reusable labeled password input + eye toggle, used by every password
+// field below (login, register, and both fields in forgot-reset). Each
+// caller passes its own show/onToggle state so the login password and the
+// two reset-password fields can be shown/hidden independently.
+function PasswordField({ label, value, onChange, show, onToggle, autoFocus }) {
+  return (
+    <div className="login-field">
+      <label className="login-label">{label}</label>
+      <div className="password-wrap">
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          required
+          autoFocus={autoFocus}
+        />
+        <button type="button" className="password-eye-btn" onClick={onToggle} tabIndex={-1}>
+          <EyeIcon off={show} />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function Login({ onLoggedIn }) {
   const [mode, setMode] = useState('login') // login | register | verify | forgot-request | forgot-reset
@@ -9,6 +61,11 @@ export default function Login({ onLoggedIn }) {
   const [code, setCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  // Shared across modes rather than per-field, since only one mode is ever
+  // visible at a time — login/register/new-password reuse showPassword,
+  // and showConfirmPassword only applies to forgot-reset's second field.
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [loading, setLoading] = useState(false)
@@ -103,6 +160,9 @@ export default function Login({ onLoggedIn }) {
     }
     setLoading(true)
     try {
+      // Backend also clears any account lockout on a successful reset
+      // (see reset_password in server.py) — this is the recovery path if
+      // repeated failed logins have locked the account.
       await resetPassword(email, code, newPassword)
       setMode('login')
       setPassword('')
@@ -132,10 +192,13 @@ export default function Login({ onLoggedIn }) {
               <label className="login-label">Email</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
             </div>
-            <div className="login-field">
-              <label className="login-label">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
+            <PasswordField
+              label="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              show={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
             {error && <div className="login-error">{error}</div>}
             {info && <div className="login-info">{info}</div>}
             <button type="submit" className="login-submit" disabled={loading}>
@@ -159,10 +222,13 @@ export default function Login({ onLoggedIn }) {
               <label className="login-label">Email</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
-            <div className="login-field">
-              <label className="login-label">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
+            <PasswordField
+              label="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              show={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
             {error && <div className="login-error">{error}</div>}
             <button type="submit" className="login-submit" disabled={loading}>
               {loading ? 'Creating account…' : 'Create account'}
@@ -234,14 +300,20 @@ export default function Login({ onLoggedIn }) {
                 maxLength={6}
               />
             </div>
-            <div className="login-field">
-              <label className="login-label">New password</label>
-              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
-            </div>
-            <div className="login-field">
-              <label className="login-label">Confirm new password</label>
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
-            </div>
+            <PasswordField
+              label="New password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              show={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+            />
+            <PasswordField
+              label="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              show={showConfirmPassword}
+              onToggle={() => setShowConfirmPassword((v) => !v)}
+            />
             {error && <div className="login-error">{error}</div>}
             {info && <div className="login-info">{info}</div>}
             <button type="submit" className="login-submit" disabled={loading}>

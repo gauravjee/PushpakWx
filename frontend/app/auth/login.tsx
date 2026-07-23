@@ -1,3 +1,13 @@
+/**
+ * Sign-in screen.
+ *
+ * Layout intentionally matches the Pilot Portal and Admin Panel login
+ * screens (360px card, 40px padding, 3px brand-colored top border) — if
+ * you change these dimensions, update the other two apps to match, or the
+ * three products will visually drift apart. See:
+ *   pilot-portal/src/pages/Login.jsx (styles.css .login-card)
+ *   admin/src/pages/Login.jsx (styles.css .login-card)
+ */
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet,
@@ -20,7 +30,11 @@ export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Toggles secureTextEntry — see the eye-icon Pressable below.
   const [showPassword, setShowPassword] = useState(false);
+  // React Native has no CSS :focus pseudo-class, so focus-driven styling
+  // (the brand-colored border below) has to be tracked in state manually
+  // via onFocus/onBlur, then applied conditionally in the style array.
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -38,6 +52,9 @@ export default function Login() {
       router.replace('/(tabs)/dashboard');
     } catch (e: any) {
       const msg = e.message || 'Login failed';
+      // Backend returns a 403 with this phrase when the account exists but
+      // hasn't completed email verification yet — redirect instead of
+      // just showing an error, since the user's next step is obvious.
       if (msg.toLowerCase().includes('not verified')) {
         router.replace({ pathname: '/auth/verify-email', params: { email: email.trim() } });
         return;
@@ -73,6 +90,9 @@ export default function Login() {
               keyboardType="email-address"
             />
             <Text style={styles.label}>PASSWORD</Text>
+            {/* passwordWrap positions the eye-icon button inside the input's
+                right edge; passwordInput adds right-padding so typed text
+                never renders underneath the icon. */}
             <View style={styles.passwordWrap}>
               <TextInput
                 testID="login-password-input"
@@ -128,6 +148,9 @@ export default function Login() {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.surface },
   scroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
+  // Card dimensions (360 width, 40 padding, 3 top border) are shared with
+  // the Pilot Portal and Admin Panel login cards — keep these numbers in
+  // sync across all three if you adjust the shared login look.
   card: {
     width: 360,
     backgroundColor: colors.surfaceSecondary,
@@ -157,11 +180,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     fontSize: 14,
   },
+  // Applied conditionally via emailFocused/passwordFocused state above —
+  // this is the only visual difference on focus; noOutline (above) handles
+  // suppressing the browser's separate native focus ring on web.
   inputFocused: {
     borderColor: colors.brand,
   },
   passwordWrap: { width: '100%', position: 'relative', justifyContent: 'center' },
-  passwordInput: { paddingRight: 44 },
+  passwordInput: { paddingRight: 44 }, // leaves room for the eye icon
   eyeBtn: { position: 'absolute', right: 12 },
   err: { color: colors.error, fontSize: 13, marginTop: spacing.sm, alignSelf: 'flex-start' },
   cta: {
@@ -178,3 +204,4 @@ const styles = StyleSheet.create({
   },
   linkText: { color: colors.onSurfaceSecondary, fontSize: 13, textDecorationLine: 'underline' },
 });
+

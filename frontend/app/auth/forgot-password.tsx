@@ -1,20 +1,25 @@
+/**
+ * First step of the password-reset flow — just collects an email and
+ * triggers the backend to send a code, then hands off to
+ * reset-password.tsx for the code + new password. No password field on
+ * this screen, so no eye-toggle needed here.
+ */
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius } from '@/src/theme';
 import { api } from '@/src/api/client';
 
-const BG = 'https://images.unsplash.com/photo-1554137496-a7b5bf064531?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwxfHxydW53YXklMjBhcHByb2FjaCUyMGxpZ2h0cyUyMG5pZ2h0fGVufDB8fHx8MTc4MzkzMDA3NHww&ixlib=rb-4.1.0&q=85';
+const noOutline: any = { outlineStyle: 'none' }; // see login.tsx for why this exists
 
 export default function ForgotPassword() {
   const router = useRouter();
   const [email, setEmail] = useState('');
+  const [emailFocused, setEmailFocused] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,6 +31,10 @@ export default function ForgotPassword() {
     }
     setLoading(true);
     try {
+      // Backend intentionally returns the same generic response whether or
+      // not the email is registered (see forgot_password in server.py) —
+      // so this always proceeds to reset-password.tsx regardless, rather
+      // than trying to branch on whether the account "really" exists.
       await api.forgotPassword(email.trim());
       router.replace({ pathname: '/auth/reset-password', params: { email: email.trim() } });
     } catch (e: any) {
@@ -37,33 +46,27 @@ export default function ForgotPassword() {
 
   return (
     <View style={styles.wrap} testID="forgot-password-screen">
-      <Image source={BG} style={StyleSheet.absoluteFill} contentFit="cover" />
-      <LinearGradient
-        colors={['rgba(17,19,21,0.5)', 'rgba(17,19,21,0.9)', 'rgba(17,19,21,1)']}
-        style={StyleSheet.absoluteFill}
-      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()} style={styles.backBtn} testID="forgot-back-button">
-            <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
-          </Pressable>
-          <View style={styles.header}>
-            <Ionicons name="lock-open-outline" size={48} color={colors.brand} />
-            <Text style={styles.title}>Reset your password</Text>
-            <Text style={styles.sub}>
+          <View style={styles.card}>
+            <Ionicons name="lock-open-outline" size={44} color={colors.brand} style={{ marginBottom: 16 }} />
+            <Text style={styles.brand}>Reset your password</Text>
+            <Text style={styles.tag}>
               Enter the email address associated with your account and we'll send you a code to reset your password.
             </Text>
-          </View>
-          <View style={styles.form}>
+
+            <Text style={styles.label}>EMAIL</Text>
             <TextInput
               testID="forgot-email-input"
-              style={styles.input}
-              placeholder="Email"
+              style={[styles.input, noOutline, emailFocused && styles.inputFocused]}
               placeholderTextColor={colors.onSurfaceTertiary}
               value={email}
               onChangeText={setEmail}
+              onFocus={() => setEmailFocused(true)}
+              onBlur={() => setEmailFocused(false)}
               autoCapitalize="none"
               keyboardType="email-address"
+              autoFocus
             />
             {err ? <Text style={styles.err} testID="forgot-error">{err}</Text> : null}
             <Pressable
@@ -74,6 +77,9 @@ export default function ForgotPassword() {
             >
               {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.ctaText}>SEND CODE</Text>}
             </Pressable>
+            <Pressable testID="forgot-back-button" onPress={() => router.back()} style={styles.secondaryBtn}>
+              <Text style={styles.linkText}>Back to sign in</Text>
+            </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -83,23 +89,46 @@ export default function ForgotPassword() {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.surface },
-  scroll: { flexGrow: 1, padding: spacing.xl, paddingTop: spacing.xxxl + 24 },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: colors.surfaceSecondary },
-  header: { alignItems: 'center', marginTop: spacing.xxl, gap: spacing.md, paddingHorizontal: spacing.lg },
-  title: { color: colors.onSurface, fontSize: 24, fontWeight: '800', letterSpacing: 1 },
-  sub: { color: colors.onSurfaceSecondary, textAlign: 'center', lineHeight: 20, fontSize: 14 },
-  form: { marginTop: 'auto', gap: spacing.md },
+  scroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
+  card: {
+    width: 360,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopWidth: 3,
+    borderTopColor: colors.brand,
+    padding: 40,
+    alignItems: 'center',
+  },
+  brand: { color: colors.onSurface, fontSize: 22, fontWeight: '700', marginBottom: 4, textAlign: 'center' },
+  tag: { color: colors.onSurfaceSecondary, fontSize: 13, marginBottom: 28, textAlign: 'center', lineHeight: 19 },
+  label: {
+    alignSelf: 'flex-start', color: colors.onSurfaceTertiary, fontSize: 11,
+    letterSpacing: 1, marginBottom: 6, marginTop: spacing.md,
+  },
   input: {
+    width: '100%',
     backgroundColor: colors.surfaceSecondary,
     color: colors.onSurface,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    fontSize: 15,
+    fontSize: 14,
   },
-  err: { color: colors.error, fontSize: 13 },
-  cta: { backgroundColor: colors.brand, borderRadius: radius.md, padding: 16, alignItems: 'center' },
+  inputFocused: { borderColor: colors.brand },
+  err: { color: colors.error, fontSize: 13, marginTop: spacing.sm, alignSelf: 'flex-start' },
+  cta: {
+    width: '100%',
+    backgroundColor: colors.brand,
+    borderRadius: radius.md,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
   ctaText: { color: '#000', fontWeight: '800', letterSpacing: 2, fontSize: 15 },
+  secondaryBtn: { marginTop: spacing.lg, alignItems: 'center' },
+  linkText: { color: colors.onSurfaceSecondary, fontSize: 13, textDecorationLine: 'underline' },
 });
