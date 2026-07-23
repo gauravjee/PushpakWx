@@ -7,6 +7,7 @@ import FlightsList from './pages/FlightsList'
 import FlightDetail from './pages/FlightDetail'
 import FlightsMap from './pages/FlightsMap'
 import About from './pages/About'
+import Privacy from './pages/Privacy'
 
 function Topbar({ onLogout }) {
   const user = getStoredUser()
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/flights/:id" element={<FlightDetail />} />
             <Route path="/maps" element={<FlightsMap />} />
             <Route path="/about" element={<About />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

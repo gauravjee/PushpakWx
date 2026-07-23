@@ -2,6 +2,8 @@
 // reading directly from package.json — always accurate, never needs
 // manual updating on release (unlike a hardcoded version string, which
 // is exactly the kind of thing that went stale once already this project).
+import { Link } from 'react-router-dom'
+
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
 const BENEFITS = [
@@ -81,6 +83,11 @@ export default function About() {
         <div style={{ color: 'var(--on-surface-2)', fontSize: 13 }}>
           Pilot Portal {APP_VERSION ? `v${APP_VERSION}` : ''}
         </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title">Legal</div>
+        <Link to="/privacy" className="login-link" style={{ fontSize: 13 }}>Privacy Policy</Link>
       </div>
     </div>
   )

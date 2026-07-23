@@ -231,6 +231,14 @@ export default function Settings() {
             value="Not for primary flight planning. Use official aviation weather (METAR/TAF) sources."
             multiLine
           />
+          <Pressable testID="privacy-policy-link" onPress={() => router.push('/privacy')} style={styles.infoRow}>
+            <Ionicons name="document-text-outline" size={18} color={colors.brand} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.infoLabel}>Legal</Text>
+              <Text style={styles.infoValue}>Privacy Policy</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceTertiary} />
+          </Pressable>
         </Section>
 
         <Text style={styles.copyright}>
