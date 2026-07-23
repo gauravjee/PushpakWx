@@ -145,6 +145,7 @@ class ResetPasswordRequest(BaseModel):
 
 class DeleteAccountRequest(BaseModel):
     password: str
+    confirm_email: str
 
 class UserPublic(BaseModel):
     id: str
@@ -560,14 +561,25 @@ async def me(user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/delete-account")
 async def delete_account(payload: DeleteAccountRequest, user: dict = Depends(get_current_user)):
+    if payload.confirm_email.strip().lower() != user["email"].lower():
+        raise HTTPException(status_code=400, detail="Email confirmation does not match your account email")
     if not verify_password(payload.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect password")
     user_id = user["id"]
     email = user["email"]
-    # Delete all user-related data
+
+    await db.account_deletions.insert_one({
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "user_id_at_deletion": user_id,
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+    })
+
     await db.favorites.delete_many({"user_id": user_id})
     await db.prefs.delete_many({"user_id": user_id})
     await db.otps.delete_many({"email": email})
+    await db.flights.delete_many({"user_id": user_id})
+    await db.events.delete_many({"user_id": user_id})
     await db.users.delete_one({"id": user_id})
     return {"message": "Account and all associated data deleted successfully"}
 
