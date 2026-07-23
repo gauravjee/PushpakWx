@@ -1,4 +1,5 @@
 import React, { useState, useMemo} from 'react';
+import { Image } from 'expo-image';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -77,6 +78,13 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="settings-screen">
+      {/* Background logo watermark — see dashboard.tsx for the fuller comment. */}
+      <Image
+        source={require('../../assets/images/icon.png')}
+        style={{ position: 'absolute', top: '50%', left: '50%', width: 640, height: 640, marginLeft: -320, marginTop: -320, opacity: 0.05 }}
+        contentFit="contain"
+        pointerEvents="none"
+      />
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.header}>
           <Text style={styles.title}>SETUP</Text>

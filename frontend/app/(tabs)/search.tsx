@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo} from 'react';
+import { Image } from 'expo-image';
 import {
   View, Text, StyleSheet, TextInput, FlatList, Pressable, ActivityIndicator, ScrollView,
 } from 'react-native';
@@ -59,6 +60,13 @@ export default function Search() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="search-screen">
+      {/* Background logo watermark — see dashboard.tsx for the fuller comment. */}
+      <Image
+        source={require('../../assets/images/icon.png')}
+        style={{ position: 'absolute', top: '50%', left: '50%', width: 640, height: 640, marginLeft: -320, marginTop: -320, opacity: 0.05 }}
+        contentFit="contain"
+        pointerEvents="none"
+      />
       <View style={styles.headerBlock}>
         <Text style={styles.title}>SEARCH</Text>
         <View style={styles.chipRow}>

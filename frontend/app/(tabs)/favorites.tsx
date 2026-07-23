@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useMemo} from 'react';
+import { Image } from 'expo-image';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,6 +51,15 @@ export default function Favorites() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="favorites-screen">
+      {/* Background logo watermark — same size/opacity as every other tab,
+          the Pilot Portal, and the Admin Panel. See dashboard.tsx for the
+          fuller explanatory comment. */}
+      <Image
+        source={require('../../assets/images/icon.png')}
+        style={{ position: 'absolute', top: '50%', left: '50%', width: 640, height: 640, marginLeft: -320, marginTop: -320, opacity: 0.05 }}
+        contentFit="contain"
+        pointerEvents="none"
+      />
       <View style={styles.header}>
         <Text style={styles.title}>SAVED AIRPORTS</Text>
         <Text style={styles.sub}>{favs.length} saved</Text>

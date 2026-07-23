@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo} from 'react';
+import { Image } from 'expo-image';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform, Modal, TextInput, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -526,6 +527,13 @@ export default function InFlight() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface }} edges={['top']} testID="inflight-screen">
+      {/* Background logo watermark — see dashboard.tsx for the fuller comment. */}
+      <Image
+        source={require('../../assets/images/icon.png')}
+        style={{ position: 'absolute', top: '50%', left: '50%', width: 640, height: 640, marginLeft: -320, marginTop: -320, opacity: 0.05 }}
+        contentFit="contain"
+        pointerEvents="none"
+      />
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxl }}>
         <View style={styles.header}>
           <Text style={styles.title}>INFLIGHT</Text>
