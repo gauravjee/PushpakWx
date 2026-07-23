@@ -4,15 +4,25 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Link } from 'expo-router';
 import { colors, spacing, radius } from '@/src/theme';
 import { useAuth } from '@/src/context/AuthContext';
+
+// Web-only: suppresses the browser's native focus ring (a separate `outline`
+// from `border`), which would otherwise stay blue regardless of our custom
+// border-color-on-focus styling below. StyleSheet.create's types don't
+// recognize this RN-Web-specific property, so it's kept separate and cast.
+const noOutline: any = { outlineStyle: 'none' };
 
 export default function Login() {
   const { login } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -53,22 +63,40 @@ export default function Login() {
             <Text style={styles.label}>EMAIL</Text>
             <TextInput
               testID="login-email-input"
-              style={styles.input}
+              style={[styles.input, noOutline, emailFocused && styles.inputFocused]}
               placeholderTextColor={colors.onSurfaceTertiary}
               value={email}
               onChangeText={setEmail}
+              onFocus={() => setEmailFocused(true)}
+              onBlur={() => setEmailFocused(false)}
               autoCapitalize="none"
               keyboardType="email-address"
             />
             <Text style={styles.label}>PASSWORD</Text>
-            <TextInput
-              testID="login-password-input"
-              style={styles.input}
-              placeholderTextColor={colors.onSurfaceTertiary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <View style={styles.passwordWrap}>
+              <TextInput
+                testID="login-password-input"
+                style={[styles.input, styles.passwordInput, noOutline, passwordFocused && styles.inputFocused]}
+                placeholderTextColor={colors.onSurfaceTertiary}
+                value={password}
+                onChangeText={setPassword}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
+                secureTextEntry={!showPassword}
+              />
+              <Pressable
+                testID="toggle-password-visibility"
+                onPress={() => setShowPassword((v) => !v)}
+                style={styles.eyeBtn}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={colors.onSurfaceTertiary}
+                />
+              </Pressable>
+            </View>
             {err ? <Text style={styles.err} testID="login-error">{err}</Text> : null}
             <Pressable
               testID="login-submit-button"
@@ -101,35 +129,40 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.surface },
   scroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
   card: {
-    width: '100%',
-    maxWidth: 380,
+    width: 360,
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     borderTopWidth: 3,
     borderTopColor: colors.brand,
-    padding: spacing.xl,
+    padding: 40,
     alignItems: 'center',
   },
-  logo: { width: 56, height: 56, borderRadius: 14, marginBottom: spacing.md },
-  brand: { color: colors.onSurface, fontSize: 22, fontWeight: '800', marginBottom: 4 },
-  tag: { color: colors.onSurfaceSecondary, fontSize: 13, marginBottom: spacing.xl, textAlign: 'center' },
+  logo: { width: 56, height: 56, borderRadius: 14, marginBottom: 16 },
+  brand: { color: colors.onSurface, fontSize: 22, fontWeight: '700', marginBottom: 4 },
+  tag: { color: colors.onSurfaceSecondary, fontSize: 13, marginBottom: 28, textAlign: 'center' },
   label: {
     alignSelf: 'flex-start', color: colors.onSurfaceTertiary, fontSize: 11,
     letterSpacing: 1, marginBottom: 6, marginTop: spacing.md,
   },
   input: {
     width: '100%',
-    backgroundColor: colors.surfaceTertiary,
+    backgroundColor: colors.surfaceSecondary,
     color: colors.onSurface,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    fontSize: 15,
+    fontSize: 14,
   },
+  inputFocused: {
+    borderColor: colors.brand,
+  },
+  passwordWrap: { width: '100%', position: 'relative', justifyContent: 'center' },
+  passwordInput: { paddingRight: 44 },
+  eyeBtn: { position: 'absolute', right: 12 },
   err: { color: colors.error, fontSize: 13, marginTop: spacing.sm, alignSelf: 'flex-start' },
   cta: {
     width: '100%',
@@ -145,4 +178,3 @@ const styles = StyleSheet.create({
   },
   linkText: { color: colors.onSurfaceSecondary, fontSize: 13, textDecorationLine: 'underline' },
 });
-
