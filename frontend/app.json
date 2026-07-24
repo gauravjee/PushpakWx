@@ -12,7 +12,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.cockpitconditions.s9igsv",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Show weather for your current location"
+        "NSLocationWhenInUseUsageDescription": "Show weather for your current location",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "PushpakWx records your flight's GPS track for your logbook, including while the app is in the background or the phone is stowed away during flight."
       }
     },
     "android": {
@@ -24,7 +25,10 @@
       "package": "com.emergent.cockpitconditions.s9igsv",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -34,6 +38,15 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "PushpakWx records your flight's GPS track for your logbook, including while the app is in the background or the phone is stowed away during flight.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
       [
         "expo-splash-screen",
         {

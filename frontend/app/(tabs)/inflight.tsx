@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState, useMemo} from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback} from 'react';
 import { Image } from 'expo-image';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Linking, Platform, Modal, TextInput, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { spacing, radius, ColorPalette} from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { CompassRose } from '@/src/components/CompassRose';
@@ -14,8 +14,37 @@ import { usePrefs } from '@/src/context/PrefsContext';
 import { api } from '@/src/api/client';
 import { convertWind, convertAlt, windUnitLabel, altUnitLabel } from '@/src/utils/weather';
 import { AIRCRAFT_TYPES } from '@/src/constants/aircraft';
+import * as TaskManager from 'expo-task-manager';
+import { BACKGROUND_LOCATION_TASK } from '@/src/services/backgroundLocationTask';
+import {
+  beginRecording,
+  clearRecording,
+  getSamples as getPersistedSamples,
+  hasPendingStoppedFlight,
+  getRecordStartMs as getPersistedStartMs,
+  processLocationUpdate,
+  FlightSample,
+  AUTO_START_MS,
+  AUTO_STOP_MS,
+} from '@/src/services/flightRecording';
 
 type Sample = TrackSample;
+
+// Converts the shared service's FlightSample shape (alt_ft/speed_kt, both
+// optional) to the local TrackSample shape this screen and the map/DGCA
+// export already expect (altFt/speedKt, both required numbers) — matching
+// exactly how the original inline code always passed concrete numbers,
+// never undefined, into local sample state.
+function toLocalSample(s: FlightSample): Sample {
+  return {
+    t: s.t,
+    lat: s.lat,
+    lon: s.lon,
+    altFt: s.alt_ft ?? 0,
+    speedKt: s.speed_kt ?? 0,
+    heading: s.heading,
+  };
+}
 
 // Retain samples for up to 2 hours (7200 samples at 1 Hz)
 const TRACK_MAX_SAMPLES = 7200;
@@ -65,10 +94,6 @@ export default function InFlight() {
   const webOrientationHandlerRef = useRef<((e: any) => void) | null>(null);
   const webOrientationEventNameRef = useRef<string>('deviceorientation');
   const recordingRef = useRef(false);
-  // Auto-detect state
-  const fastSinceRef = useRef<number | null>(null); // ms when speed first crossed >= 30kt
-  const slowSinceRef = useRef<number | null>(null); // ms when speed first dropped < 2kt
-  const fastBlipSinceRef = useRef<number | null>(null); // ms when speed first rose back >= 2kt while stopped — see AUTO_STOP_RESET_GRACE_MS below
   const [autoCountdown, setAutoCountdown] = useState<{ kind: 'start' | 'stop'; secondsLeft: number } | null>(null);
   const autoCountdownRef = useRef<{ kind: 'start' | 'stop'; secondsLeft: number } | null>(null);
   useEffect(() => { autoCountdownRef.current = autoCountdown; }, [autoCountdown]);
@@ -78,6 +103,7 @@ export default function InFlight() {
   // Refs to functions used inside the location callback closure
   const startRecordingRef = useRef<() => void>(() => {});
   const stopRecordingRef = useRef<() => void>(() => {});
+  const finishStoppedRecordingRef = useRef<(samples: FlightSample[]) => void>(() => {});
 
   // Check current permission on mount
   useEffect(() => {
@@ -95,6 +121,25 @@ export default function InFlight() {
       hdgSubRef.current?.remove();
     };
   }, []);
+
+  // The mount-once effect above never re-runs, so if someone leaves this
+  // tab to grant location access in Android's own Settings app (a very
+  // normal flow — that's literally what the "Open Settings" button sends
+  // them to do) and comes back, permStatus would otherwise stay stuck on
+  // whatever it was before, showing a stale "turned off" message even
+  // after permission has genuinely been granted. This re-checks fresh
+  // every time the tab regains focus, without touching the location
+  // subscription lifecycle above (which should keep running if the user
+  // just switches to another tab, not tear down and reinitialize).
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        const p = await Location.getForegroundPermissionsAsync();
+        setCanAskAgain(p.canAskAgain);
+        setPermStatus(p.status === 'granted' ? 'granted' : p.status === 'denied' ? 'denied' : 'undetermined');
+      })();
+    }, [])
+  );
 
   // Smooths raw compass readings with a circular moving average (last 5
   // samples) — a plain average would break at the 359°→0° wraparound,
@@ -216,72 +261,49 @@ export default function InFlight() {
             setSmoothAltFt(l.coords.altitude != null ? altFt : null);
             const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
+            const currentHeading = hdgRef.current;
 
             // ----- Auto-detect flight start/stop -----
-            const AUTO_START_KT = 30;
-            const AUTO_START_MS = 15 * 1000;   // 15 seconds sustained fast
-            const AUTO_STOP_KT = 2;
-            const AUTO_STOP_MS = 2 * 60 * 1000; // 2 minutes sustained slow
-            // GPS speed is well known to be noisy at low speeds — a single stray
-            // sample reading above AUTO_STOP_KT (even while genuinely stationary)
-            // must not be allowed to instantly wipe out an almost-complete 2-minute
-            // countdown, or auto-stop can fail to ever trigger during a long stop.
-            // Speed must stay continuously above the threshold for this long before
-            // it's treated as real movement resuming, not GPS noise.
-            const AUTO_STOP_RESET_GRACE_MS = 10 * 1000;
-
-            if (autoEnabledRef.current) {
-              if (!recordingRef.current) {
-                // Waiting to start: track sustained speed >= 30 kt
-                if (speedKt >= AUTO_START_KT) {
-                  if (fastSinceRef.current == null) fastSinceRef.current = now;
-                  const elapsed = now - fastSinceRef.current;
-                  const secondsLeft = Math.max(0, Math.ceil((AUTO_START_MS - elapsed) / 1000));
-                  setAutoCountdown({ kind: 'start', secondsLeft });
-                  if (elapsed >= AUTO_START_MS) {
-                    fastSinceRef.current = null;
-                    setAutoCountdown(null);
-                    startRecordingRef.current();
-                  }
-                } else {
-                  if (fastSinceRef.current != null) {
-                    fastSinceRef.current = null;
-                    setAutoCountdown(null);
-                  }
-                }
-              } else {
-                // Recording: track sustained speed < 2 kt
-                if (speedKt < AUTO_STOP_KT) {
-                  fastBlipSinceRef.current = null; // any brief noise spike is forgotten once speed drops again
-                  if (slowSinceRef.current == null) slowSinceRef.current = now;
-                  const elapsed = now - slowSinceRef.current;
-                  const secondsLeft = Math.max(0, Math.ceil((AUTO_STOP_MS - elapsed) / 1000));
-                  setAutoCountdown({ kind: 'stop', secondsLeft });
-                  if (elapsed >= AUTO_STOP_MS) {
-                    slowSinceRef.current = null;
-                    setAutoCountdown(null);
-                    stopRecordingRef.current();
-                  }
-                } else if (slowSinceRef.current != null) {
-                  // Already mid-countdown — don't cancel on a single noisy sample.
-                  // Only cancel once speed has stayed above threshold continuously
-                  // for the full grace period, confirming real movement resumed.
-                  if (fastBlipSinceRef.current == null) fastBlipSinceRef.current = now;
-                  const fastElapsed = now - fastBlipSinceRef.current;
-                  if (fastElapsed >= AUTO_STOP_RESET_GRACE_MS) {
-                    slowSinceRef.current = null;
-                    fastBlipSinceRef.current = null;
-                    setAutoCountdown(null);
-                  }
-                  // else: keep the existing countdown running as-is, ignoring this sample
-                }
+            // Delegates to the same shared logic the background task uses,
+            // so a countdown that started while this screen was open and
+            // continued while backgrounded (or vice versa) is one continuous
+            // countdown, not two independent, conflicting ones.
+            const sample: FlightSample = {
+              t: now,
+              lat: l.coords.latitude,
+              lon: l.coords.longitude,
+              alt_ft: l.coords.altitude != null ? altFt : undefined,
+              speed_kt: l.coords.speed != null && l.coords.speed >= 0 ? speedKt : undefined,
+              heading: currentHeading,
+            };
+            processLocationUpdate(speedKt, sample, autoEnabledRef.current).then((result) => {
+              if (cancelled) return;
+              if (result.action === 'started') {
+                startRecordingRef.current();
+              } else if (result.action === 'stopped') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+                finishStoppedRecordingRef.current(result.samples);
+              } else if (result.recording) {
+                // The persisted array is the source of truth (it's what
+                // actually gets saved) — mirror it into local state purely
+                // so the live UI (sample count, track preview) stays current.
+                setSamples(result.samples.map(toLocalSample));
               }
-            } else if (autoCountdownRef.current != null) {
-              setAutoCountdown(null);
-              fastSinceRef.current = null;
-              slowSinceRef.current = null;
-              fastBlipSinceRef.current = null;
-            }
+              if (autoEnabledRef.current) {
+                const { fastSince, slowSince } = result.autoState;
+                if (!result.recording && fastSince != null) {
+                  const secondsLeft = Math.max(0, Math.ceil((AUTO_START_MS - (now - fastSince)) / 1000));
+                  setAutoCountdown({ kind: 'start', secondsLeft });
+                } else if (result.recording && slowSince != null) {
+                  const secondsLeft = Math.max(0, Math.ceil((AUTO_STOP_MS - (now - slowSince)) / 1000));
+                  setAutoCountdown({ kind: 'stop', secondsLeft });
+                } else if (autoCountdownRef.current != null) {
+                  setAutoCountdown(null);
+                }
+              } else if (autoCountdownRef.current != null) {
+                setAutoCountdown(null);
+              }
+            }).catch(() => {});
             // -----------------------------------------
 
             // Live preview buffer — always updates regardless of recording
@@ -354,48 +376,102 @@ export default function InFlight() {
 
   const startRecording = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    const startMs = Date.now();
     setSamples([]);
-    setRecordStartMs(Date.now());
+    setRecordStartMs(startMs);
     setRecording(true);
     recordingRef.current = true;
-    // Reset auto-detect timers
-    fastSinceRef.current = null;
-    slowSinceRef.current = null;
-    fastBlipSinceRef.current = null;
     setAutoCountdown(null);
+    beginRecording(startMs).catch(() => {});
+    // Must be started here, while still in the foreground — Android
+    // restricts starting a new foreground service from the background, so
+    // this can't be deferred until after the phone might already be stowed
+    // away. Runs alongside the existing foreground watch, not instead of
+    // it; the background task only continues delivering updates once this
+    // screen stops receiving them (backgrounded/locked).
+    Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+      accuracy: Location.Accuracy.BestForNavigation,
+      timeInterval: 5000,
+      distanceInterval: 0,
+      showsBackgroundLocationIndicator: true,
+      foregroundService: {
+        notificationTitle: 'PushpakWx is recording your flight',
+        notificationBody: 'GPS tracking continues in the background — tap to return to the app.',
+      },
+    }).catch((e) => {
+      console.warn('[flight-recording] could not start background updates', e?.message);
+    });
   };
 
-  const stopRecording = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+  const stopBackgroundLocationUpdates = async () => {
+    try {
+      const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      if (started) await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+    } catch {
+      // Not registered / already stopped — nothing to do.
+    }
+  };
+
+  // Shared tail end for both a manual stop (button press) and an auto-stop
+  // that fired via the shared service (whether from this screen's own
+  // foreground watch, or from the background task while this screen wasn't
+  // even mounted to see it happen). `samples` is always read from
+  // persisted storage by the caller, never local state, so a flight that
+  // was auto-stopped entirely in the background — with this screen
+  // reopened only afterward — still shows the correct full track here.
+  const finishStoppedRecording = async (samples: FlightSample[]) => {
     setRecording(false);
     recordingRef.current = false;
-    fastSinceRef.current = null;
-    slowSinceRef.current = null;
-    fastBlipSinceRef.current = null;
     setAutoCountdown(null);
-    const captured = samples;
-    const start = recordStartMs;
-    const end = Date.now();
-    if (captured.length < 2 || !start) {
+    await stopBackgroundLocationUpdates();
+    const start = (await getPersistedStartMs()) ?? recordStartMs;
+    const end = samples.length > 0 ? samples[samples.length - 1].t : Date.now();
+    if (samples.length < 2 || !start) {
       Alert.alert('Flight too short', 'Not enough samples were captured to save this flight.');
+      clearRecording().catch(() => {});
       return;
     }
-    setPendingSamples(captured);
+    setPendingSamples(samples.map(toLocalSample));
     setPendingStart(start);
     setPendingEnd(end);
     setSaveNote('');
     setSaveModalVisible(true);
   };
 
+  const stopRecording = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    // Read from persisted storage, not local `samples` state — keeps a
+    // manual stop consistent with an auto-stop, and correct even if local
+    // state ever lagged behind what's actually been saved to disk.
+    getPersistedSamples().then((persisted) => {
+      finishStoppedRecording(persisted);
+    });
+  };
+
   // Keep refs pointing at the latest functions so the location callback can call them
   useEffect(() => { startRecordingRef.current = startRecording; });
   useEffect(() => { stopRecordingRef.current = stopRecording; });
+  useEffect(() => { finishStoppedRecordingRef.current = finishStoppedRecording; });
+
+  // A flight that was auto-stopped entirely while this screen wasn't open
+  // (backgrounded through landing, never reopened until now) leaves a
+  // pending flag in storage — surface its save prompt now, rather than the
+  // completed flight silently sitting unreachable in storage forever.
+  useEffect(() => {
+    hasPendingStoppedFlight().then((pending) => {
+      if (!pending) return;
+      getPersistedSamples().then((persisted) => {
+        finishStoppedRecordingRef.current(persisted);
+      });
+    });
+  }, []);
 
   const discardFlight = () => {
     setSaveModalVisible(false);
     setPendingSamples([]);
     setPendingStart(null);
     setPendingEnd(null);
+    clearRecording().catch(() => {});
   };
 
   const saveFlight = async () => {
@@ -420,6 +496,10 @@ export default function InFlight() {
       setPendingSamples([]);
       setPendingStart(null);
       setPendingEnd(null);
+      // Only clear the persisted samples once the API call has actually
+      // succeeded — if it failed, they should still be sitting in storage
+      // so nothing is lost and the person can try saving again.
+      clearRecording().catch(() => {});
       // Offer to fill in logbook details (aircraft, capacity, etc.) before
       // heading to the logbook — entirely optional, skippable.
       setSavedFlightId(created.id);

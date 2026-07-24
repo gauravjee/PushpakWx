@@ -9,6 +9,11 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/context/AuthContext";
 import { PrefsProvider } from "@/src/context/PrefsContext";
 import { ThemeProvider, useTheme } from "@/src/context/ThemeContext";
+// Registers the background flight-recording task as soon as the JS bundle
+// loads — required so it's available even if the OS relaunches a headless
+// JS context purely to service a background location update, without ever
+// reaching this file through a normal app-open flow otherwise.
+import "@/src/services/backgroundLocationTask";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
