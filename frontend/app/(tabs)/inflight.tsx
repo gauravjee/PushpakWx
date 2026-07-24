@@ -67,7 +67,8 @@ export default function InFlight() {
   const recordingRef = useRef(false);
   // Auto-detect state
   const fastSinceRef = useRef<number | null>(null); // ms when speed first crossed >= 30kt
-  const slowSinceRef = useRef<number | null>(null); // ms when speed first dropped < 5kt
+  const slowSinceRef = useRef<number | null>(null); // ms when speed first dropped < 2kt
+  const fastBlipSinceRef = useRef<number | null>(null); // ms when speed first rose back >= 2kt while stopped — see AUTO_STOP_RESET_GRACE_MS below
   const [autoCountdown, setAutoCountdown] = useState<{ kind: 'start' | 'stop'; secondsLeft: number } | null>(null);
   const autoCountdownRef = useRef<{ kind: 'start' | 'stop'; secondsLeft: number } | null>(null);
   useEffect(() => { autoCountdownRef.current = autoCountdown; }, [autoCountdown]);
@@ -219,8 +220,15 @@ export default function InFlight() {
             // ----- Auto-detect flight start/stop -----
             const AUTO_START_KT = 30;
             const AUTO_START_MS = 15 * 1000;   // 15 seconds sustained fast
-            const AUTO_STOP_KT = 5;
+            const AUTO_STOP_KT = 2;
             const AUTO_STOP_MS = 2 * 60 * 1000; // 2 minutes sustained slow
+            // GPS speed is well known to be noisy at low speeds — a single stray
+            // sample reading above AUTO_STOP_KT (even while genuinely stationary)
+            // must not be allowed to instantly wipe out an almost-complete 2-minute
+            // countdown, or auto-stop can fail to ever trigger during a long stop.
+            // Speed must stay continuously above the threshold for this long before
+            // it's treated as real movement resuming, not GPS noise.
+            const AUTO_STOP_RESET_GRACE_MS = 10 * 1000;
 
             if (autoEnabledRef.current) {
               if (!recordingRef.current) {
@@ -242,8 +250,9 @@ export default function InFlight() {
                   }
                 }
               } else {
-                // Recording: track sustained speed < 5 kt
+                // Recording: track sustained speed < 2 kt
                 if (speedKt < AUTO_STOP_KT) {
+                  fastBlipSinceRef.current = null; // any brief noise spike is forgotten once speed drops again
                   if (slowSinceRef.current == null) slowSinceRef.current = now;
                   const elapsed = now - slowSinceRef.current;
                   const secondsLeft = Math.max(0, Math.ceil((AUTO_STOP_MS - elapsed) / 1000));
@@ -253,17 +262,25 @@ export default function InFlight() {
                     setAutoCountdown(null);
                     stopRecordingRef.current();
                   }
-                } else {
-                  if (slowSinceRef.current != null) {
+                } else if (slowSinceRef.current != null) {
+                  // Already mid-countdown — don't cancel on a single noisy sample.
+                  // Only cancel once speed has stayed above threshold continuously
+                  // for the full grace period, confirming real movement resumed.
+                  if (fastBlipSinceRef.current == null) fastBlipSinceRef.current = now;
+                  const fastElapsed = now - fastBlipSinceRef.current;
+                  if (fastElapsed >= AUTO_STOP_RESET_GRACE_MS) {
                     slowSinceRef.current = null;
+                    fastBlipSinceRef.current = null;
                     setAutoCountdown(null);
                   }
+                  // else: keep the existing countdown running as-is, ignoring this sample
                 }
               }
             } else if (autoCountdownRef.current != null) {
               setAutoCountdown(null);
               fastSinceRef.current = null;
               slowSinceRef.current = null;
+              fastBlipSinceRef.current = null;
             }
             // -----------------------------------------
 
@@ -344,6 +361,7 @@ export default function InFlight() {
     // Reset auto-detect timers
     fastSinceRef.current = null;
     slowSinceRef.current = null;
+    fastBlipSinceRef.current = null;
     setAutoCountdown(null);
   };
 
@@ -353,6 +371,7 @@ export default function InFlight() {
     recordingRef.current = false;
     fastSinceRef.current = null;
     slowSinceRef.current = null;
+    fastBlipSinceRef.current = null;
     setAutoCountdown(null);
     const captured = samples;
     const start = recordStartMs;
