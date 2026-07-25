@@ -14,6 +14,7 @@ import { ThemeProvider, useTheme } from "@/src/context/ThemeContext";
 // JS context purely to service a background location update, without ever
 // reaching this file through a normal app-open flow otherwise.
 import "@/src/services/backgroundLocationTask";
+import "@/src/services/stopWarningNotifications";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();

@@ -23,6 +23,17 @@ type AutoDetectState = {
   fastSince: number | null;
   slowSince: number | null;
   fastBlipSince: number | null;
+  // Sticky for the whole recording session, once true — tracks whether this
+  // flight has ever actually reached flying speed. Ground ops before that
+  // point (walking out, run-up checks, taxi, holding for clearance) can
+  // easily involve several minutes of near-zero speed that has nothing to
+  // do with the flight being over, so a much more generous stop threshold
+  // applies until real flight speed is reached at least once.
+  hasReachedFlightSpeed: boolean;
+  // True once the warning (popup + notification) has already fired for the
+  // current stop countdown, so it fires exactly once per cycle rather than
+  // on every single location update during the whole warning window.
+  warningNotified: boolean;
 };
 
 const KEY_RECORDING_ACTIVE = 'flight_recording_active';
@@ -38,15 +49,23 @@ export const AUTO_START_KT = 30;
 export const AUTO_START_MS = 15 * 1000;
 export const AUTO_STOP_KT = 2;
 export const AUTO_STOP_MS = 2 * 60 * 1000;
+// Applies only before flight speed has ever been reached this session —
+// generous on purpose, since the only cost of not stopping here is a
+// slightly longer sample file sitting through routine ground ops.
+export const GROUND_STOP_MS = 30 * 60 * 1000;
+// How far ahead of an actual stop the warning (in-app popup + notification)
+// appears — shared by both the ground-phase and post-flight-speed
+// countdowns, whichever is currently active.
+export const STOP_WARNING_MS = 2 * 60 * 1000;
 const AUTO_STOP_RESET_GRACE_MS = 10 * 1000;
 
 async function getAutoState(): Promise<AutoDetectState> {
   const raw = await storage.getItem<string>(KEY_AUTO_STATE, '');
-  if (!raw) return { fastSince: null, slowSince: null, fastBlipSince: null };
+  if (!raw) return { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
   try {
     return JSON.parse(raw) as AutoDetectState;
   } catch {
-    return { fastSince: null, slowSince: null, fastBlipSince: null };
+    return { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
   }
 }
 
@@ -83,7 +102,7 @@ export async function beginRecording(startMs: number): Promise<void> {
   await storage.setItem(KEY_RECORDING_ACTIVE, true);
   await storage.setItem(KEY_RECORD_START_MS, startMs);
   await storage.setItem(KEY_SAMPLES, JSON.stringify([]));
-  await setAutoState({ fastSince: null, slowSince: null, fastBlipSince: null });
+  await setAutoState({ fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false });
   await storage.setItem(KEY_PENDING_STOPPED, false);
 }
 
@@ -110,6 +129,13 @@ export type ProcessResult = {
   // in hand by the time it returns.
   autoState: AutoDetectState;
   recording: boolean;
+  // True on exactly the one update where the countdown first crosses into
+  // its final warning window — the caller's cue to fire a notification.
+  // Deliberately edge-triggered, not level-triggered: without this, a
+  // caller checking secondsLeft <= STOP_WARNING_MS on every single update
+  // would re-fire a fresh notification roughly once a second for the
+  // entire warning window.
+  shouldWarn: boolean;
 };
 
 /**
@@ -134,12 +160,12 @@ export async function processLocationUpdate(
   const recording = await isRecordingActive();
 
   if (!autoDetectEnabled) {
-    const emptyState = { fastSince: null, slowSince: null, fastBlipSince: null };
+    const emptyState = { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
     if (recording) {
       const samples = await appendSample(sample);
-      return { samples, action: null, autoState: emptyState, recording };
+      return { samples, action: null, autoState: emptyState, recording, shouldWarn: false };
     }
-    return { samples: await getSamples(), action: null, autoState: emptyState, recording };
+    return { samples: await getSamples(), action: null, autoState: emptyState, recording, shouldWarn: false };
   }
 
   const now = sample.t;
@@ -150,42 +176,74 @@ export async function processLocationUpdate(
       if (state.fastSince == null) state.fastSince = now;
       const elapsed = now - state.fastSince;
       if (elapsed >= AUTO_START_MS) {
-        const cleared = { fastSince: null, slowSince: null, fastBlipSince: null };
+        const cleared = { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
         await setAutoState(cleared);
-        return { samples: [], action: 'started', autoState: cleared, recording: false };
+        return { samples: [], action: 'started', autoState: cleared, recording: false, shouldWarn: false };
       }
       await setAutoState(state);
     } else if (state.fastSince != null) {
       state.fastSince = null;
       await setAutoState(state);
     }
-    return { samples: [], action: null, autoState: state, recording: false };
+    return { samples: [], action: null, autoState: state, recording: false, shouldWarn: false };
   }
 
   // Currently recording: always append the sample first, then evaluate stop.
   const samples = await appendSample(sample);
 
+  // Once flight speed is reached, that's sticky for the rest of the
+  // session — a later ground hold shouldn't fall back to the generous
+  // pre-flight threshold just because speed happens to be low again.
+  if (!state.hasReachedFlightSpeed && speedKt >= AUTO_START_KT) {
+    state.hasReachedFlightSpeed = true;
+  }
+  const activeStopMs = state.hasReachedFlightSpeed ? AUTO_STOP_MS : GROUND_STOP_MS;
+
   if (speedKt < AUTO_STOP_KT) {
     state.fastBlipSince = null;
     if (state.slowSince == null) state.slowSince = now;
     const elapsed = now - state.slowSince;
-    if (elapsed >= AUTO_STOP_MS) {
+    if (elapsed >= activeStopMs) {
       await storage.setItem(KEY_RECORDING_ACTIVE, false);
       await storage.setItem(KEY_PENDING_STOPPED, true);
-      const cleared = { fastSince: null, slowSince: null, fastBlipSince: null };
+      const cleared = { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
       await setAutoState(cleared);
-      return { samples, action: 'stopped', autoState: cleared, recording: false };
+      return { samples, action: 'stopped', autoState: cleared, recording: false, shouldWarn: false };
+    }
+    let shouldWarn = false;
+    if (!state.warningNotified && elapsed >= activeStopMs - STOP_WARNING_MS) {
+      state.warningNotified = true;
+      shouldWarn = true;
     }
     await setAutoState(state);
+    return { samples, action: null, autoState: state, recording: true, shouldWarn };
   } else if (state.slowSince != null) {
     if (state.fastBlipSince == null) state.fastBlipSince = now;
     const fastElapsed = now - state.fastBlipSince;
     if (fastElapsed >= AUTO_STOP_RESET_GRACE_MS) {
       state.slowSince = null;
       state.fastBlipSince = null;
+      // Genuine movement resumed — a later stop is a fresh cycle, so it
+      // should be able to warn again rather than staying silenced forever.
+      state.warningNotified = false;
     }
     await setAutoState(state);
   }
 
-  return { samples, action: null, autoState: state, recording: true };
+  return { samples, action: null, autoState: state, recording: true, shouldWarn: false };
+}
+
+/**
+ * Manual override for the "recording will stop soon" popup's action button —
+ * lets the pilot explicitly say "still here, keep going" rather than relying
+ * only on GPS speed to prove it. Clears the stop countdown exactly as if
+ * genuine movement had resumed, without touching hasReachedFlightSpeed
+ * (that stays whatever it already was).
+ */
+export async function resetStopCountdown(): Promise<void> {
+  const state = await getAutoState();
+  state.slowSince = null;
+  state.fastBlipSince = null;
+  state.warningNotified = false;
+  await setAutoState(state);
 }

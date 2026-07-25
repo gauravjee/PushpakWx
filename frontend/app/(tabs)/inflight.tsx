@@ -23,10 +23,15 @@ import {
   hasPendingStoppedFlight,
   getRecordStartMs as getPersistedStartMs,
   processLocationUpdate,
+  resetStopCountdown,
   FlightSample,
   AUTO_START_MS,
   AUTO_STOP_MS,
+  GROUND_STOP_MS,
+  STOP_WARNING_MS,
 } from '@/src/services/flightRecording';
+import { ensureNotificationPermission, presentStopWarningNotification } from '@/src/services/stopWarningNotifications';
+import { toMslAltitudeMeters } from '@/src/utils/mslAltitude';
 
 type Sample = TrackSample;
 
@@ -255,10 +260,13 @@ export default function InFlight() {
           (l) => {
             if (cancelled) return;
             setLoc(l);
-            const rawAltFt = l.coords.altitude != null ? l.coords.altitude * 3.281 : 0;
+            const mslAltitudeM = l.coords.altitude != null
+              ? toMslAltitudeMeters(l.coords.latitude, l.coords.longitude, l.coords.altitude)
+              : null;
+            const rawAltFt = mslAltitudeM != null ? mslAltitudeM * 3.281 : 0;
             const rawAltAccFt = l.coords.altitudeAccuracy != null ? l.coords.altitudeAccuracy * 3.281 : null;
-            const altFt = l.coords.altitude != null ? smoothAltitude(rawAltFt, rawAltAccFt) : 0;
-            setSmoothAltFt(l.coords.altitude != null ? altFt : null);
+            const altFt = mslAltitudeM != null ? smoothAltitude(rawAltFt, rawAltAccFt) : 0;
+            setSmoothAltFt(mslAltitudeM != null ? altFt : null);
             const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
             const currentHeading = hdgRef.current;
@@ -272,7 +280,7 @@ export default function InFlight() {
               t: now,
               lat: l.coords.latitude,
               lon: l.coords.longitude,
-              alt_ft: l.coords.altitude != null ? altFt : undefined,
+              alt_ft: mslAltitudeM != null ? altFt : undefined,
               speed_kt: l.coords.speed != null && l.coords.speed >= 0 ? speedKt : undefined,
               heading: currentHeading,
             };
@@ -289,13 +297,17 @@ export default function InFlight() {
                 // so the live UI (sample count, track preview) stays current.
                 setSamples(result.samples.map(toLocalSample));
               }
+              if (result.shouldWarn) {
+                presentStopWarningNotification(STOP_WARNING_MS / 1000).catch(() => {});
+              }
               if (autoEnabledRef.current) {
-                const { fastSince, slowSince } = result.autoState;
+                const { fastSince, slowSince, hasReachedFlightSpeed } = result.autoState;
                 if (!result.recording && fastSince != null) {
                   const secondsLeft = Math.max(0, Math.ceil((AUTO_START_MS - (now - fastSince)) / 1000));
                   setAutoCountdown({ kind: 'start', secondsLeft });
                 } else if (result.recording && slowSince != null) {
-                  const secondsLeft = Math.max(0, Math.ceil((AUTO_STOP_MS - (now - slowSince)) / 1000));
+                  const activeStopMs = hasReachedFlightSpeed ? AUTO_STOP_MS : GROUND_STOP_MS;
+                  const secondsLeft = Math.max(0, Math.ceil((activeStopMs - (now - slowSince)) / 1000));
                   setAutoCountdown({ kind: 'stop', secondsLeft });
                 } else if (autoCountdownRef.current != null) {
                   setAutoCountdown(null);
@@ -383,6 +395,10 @@ export default function InFlight() {
     recordingRef.current = true;
     setAutoCountdown(null);
     beginRecording(startMs).catch(() => {});
+    // Best-effort — if denied, the stop-warning still shows as the
+    // already-verified in-app popup whenever the screen happens to be
+    // open, it just won't also reach the lock screen.
+    ensureNotificationPermission().catch(() => {});
     // Must be started here, while still in the foreground — Android
     // restricts starting a new foreground service from the background, so
     // this can't be deferred until after the phone might already be stowed
@@ -730,7 +746,7 @@ export default function InFlight() {
           <BigMetric
             testID="metric-altitude"
             icon="airplane-outline"
-            label="ALTITUDE"
+            label="ALTITUDE (MSL)"
             value={altFt != null ? Math.round(convertAlt(altFt, prefs.altitude_unit)).toString() : '—'}
             unit={altUnitLabel(prefs.altitude_unit)}
             hint={altAccFt != null ? `±${Math.round(convertAlt(altAccFt, prefs.altitude_unit))}` : ''}
@@ -950,6 +966,35 @@ export default function InFlight() {
               </View>
             </View>
           </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={autoCountdown?.kind === 'stop' && autoCountdown.secondsLeft <= STOP_WARNING_MS / 1000}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard} testID="stop-warning-modal">
+            <View style={styles.modalIcon}>
+              <Ionicons name="time-outline" size={30} color={colors.brand} />
+            </View>
+            <Text style={styles.modalTitle}>Recording will stop soon</Text>
+            <Text style={[styles.modalStatValue, { fontSize: 36, textAlign: 'center', marginTop: spacing.sm }]}>{formatElapsed((autoCountdown?.kind === 'stop' ? autoCountdown.secondsLeft : 0) * 1000)}</Text>
+            <Text style={styles.modalLabel}>
+              No movement detected for a while. If this is just a hold — waiting for clearance,
+              a ground delay — tap below to keep recording.
+            </Text>
+            <View style={styles.modalBtnRow}>
+              <Pressable
+                testID="keep-recording-button"
+                onPress={() => { resetStopCountdown().catch(() => {}); }}
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+              >
+                <Text style={styles.modalBtnPrimaryText}>KEEP RECORDING</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>

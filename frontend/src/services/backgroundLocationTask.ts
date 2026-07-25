@@ -6,7 +6,9 @@
 // InFlight screen (or any screen) at all.
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
-import { processLocationUpdate, isRecordingActive } from './flightRecording';
+import { processLocationUpdate, isRecordingActive, STOP_WARNING_MS } from './flightRecording';
+import { presentStopWarningNotification } from './stopWarningNotifications';
+import { toMslAltitudeMeters } from '../utils/mslAltitude';
 
 export const BACKGROUND_LOCATION_TASK = 'pushpakwx-background-flight-recording';
 
@@ -24,7 +26,10 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
 
   for (const l of locations) {
     const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
-    const altFt = l.coords.altitude != null ? l.coords.altitude * 3.281 : undefined;
+    const mslAltitudeM = l.coords.altitude != null
+      ? toMslAltitudeMeters(l.coords.latitude, l.coords.longitude, l.coords.altitude)
+      : null;
+    const altFt = mslAltitudeM != null ? mslAltitudeM * 3.281 : undefined;
     const sample = {
       t: l.timestamp,
       lat: l.coords.latitude,
@@ -38,6 +43,9 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
     // the stop-side of auto-detect matters once recording — the enabled/
     // disabled preference only gates whether AUTO-START behavior applies,
     // which can't happen from the background task in the first place.
-    await processLocationUpdate(speedKt, sample, true);
+    const result = await processLocationUpdate(speedKt, sample, true);
+    if (result.shouldWarn) {
+      await presentStopWarningNotification(STOP_WARNING_MS / 1000);
+    }
   }
 });
