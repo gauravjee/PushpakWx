@@ -9,6 +9,9 @@ import { useRouter } from 'expo-router';
 import { spacing, radius, ColorPalette} from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Airport } from '@/src/api/client';
+import { useAuth } from '@/src/context/AuthContext';
+import { checkAndUse } from '@/src/utils/anonymousAccess';
+import { UsageCapModal } from '@/src/components/UsageCapModal';
 
 type SearchMode = 'airport' | 'city';
 
@@ -21,6 +24,8 @@ export default function Search() {
   const [airports, setAirports] = useState<Airport[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+  const [capModalVisible, setCapModalVisible] = useState(false);
 
   useEffect(() => {
     if (!q.trim()) {
@@ -44,7 +49,17 @@ export default function Search() {
     return () => clearTimeout(t);
   }, [q, mode]);
 
-  const goToLocation = (label: string, sub: string, lat: number, lon: number, icao?: string | null, elevation?: number | null) => {
+  const goToLocation = async (label: string, sub: string, lat: number, lon: number, icao?: string | null, elevation?: number | null) => {
+    // Logged-in users have no cap at all — only gate this for anonymous
+    // browsing, and only at the point of actually selecting a result, not
+    // on every keystroke of the live typeahead search above.
+    if (!user) {
+      const result = await checkAndUse('airport_search');
+      if (!result.allowed) {
+        setCapModalVisible(true);
+        return;
+      }
+    }
     router.push({
       pathname: '/(tabs)/dashboard',
       params: {
@@ -150,6 +165,7 @@ export default function Search() {
           )}
         />
       )}
+      <UsageCapModal visible={capModalVisible} onClose={() => setCapModalVisible(false)} kind="airport_search" />
     </SafeAreaView>
   );
 }

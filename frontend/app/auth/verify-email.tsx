@@ -7,12 +7,13 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius } from '@/src/theme';
 import { useAuth } from '@/src/context/AuthContext';
+import { trySaveAnyPendingFlight } from '@/src/services/flightRecording';
 import { api } from '@/src/api/client';
 
 const noOutline: any = { outlineStyle: 'none' }; // see login.tsx for why this exists
@@ -39,7 +40,13 @@ export default function VerifyEmail() {
     setLoading(true);
     try {
       await verifyEmail(email, code.trim());
-      router.replace('/(tabs)/dashboard');
+      const result = await trySaveAnyPendingFlight();
+      if (result.saved) {
+        Alert.alert('Flight saved', 'Your recorded flight has been added to your logbook.');
+        router.replace('/logbook');
+      } else {
+        router.replace('/(tabs)/dashboard');
+      }
     } catch (e: any) {
       setErr(e.message || 'Verification failed');
     } finally {

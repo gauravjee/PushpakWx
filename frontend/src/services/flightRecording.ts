@@ -106,6 +106,19 @@ export async function beginRecording(startMs: number): Promise<void> {
   await storage.setItem(KEY_PENDING_STOPPED, false);
 }
 
+/**
+ * Marks a flight as stopped WITHOUT clearing its pending sample data —
+ * used by a manual stop (the button), as distinct from clearRecording()
+ * which is only appropriate once the flight has actually been saved or
+ * explicitly discarded. Without this, isRecordingActive() would still
+ * report true for a manually-stopped flight sitting at the sign-up gate,
+ * which made trySaveAnyPendingFlight() bail out immediately, treating a
+ * genuinely-finished recording as if it were still in progress.
+ */
+export async function markRecordingStopped(): Promise<void> {
+  await storage.setItem(KEY_RECORDING_ACTIVE, false);
+}
+
 // Clears recording state entirely — call after a flight has been fully
 // saved (or discarded), once its samples are no longer needed in storage.
 export async function clearRecording(): Promise<void> {
@@ -246,4 +259,39 @@ export async function resetStopCountdown(): Promise<void> {
   state.fastBlipSince = null;
   state.warningNotified = false;
   await setAutoState(state);
+}
+
+/**
+ * Called right after someone completes email verification (the point a
+ * real, valid session actually exists — registration alone doesn't grant
+ * one). If a flight was recorded anonymously and left pending a sign-up
+ * gate, this saves it immediately using the data already sitting in
+ * storage — no second manual "tap Save again" step required. Safe to call
+ * unconditionally on every successful verification; it's a no-op if
+ * there's nothing pending.
+ */
+export async function trySaveAnyPendingFlight(): Promise<{ saved: boolean; flightId?: string }> {
+  const recording = await isRecordingActive();
+  if (recording) return { saved: false };
+  const samples = await getSamples();
+  const start = await getRecordStartMs();
+  if (samples.length < 2 || !start) return { saved: false };
+  try {
+    // Imported lazily to avoid making this module depend on the API
+    // client (and its own transitive imports) for the common case where
+    // this function is called and there's nothing pending to save.
+    const { api } = await import('@/src/api/client');
+    const created = await api.createFlight({
+      started_at: new Date(start).toISOString(),
+      ended_at: new Date(samples[samples.length - 1].t).toISOString(),
+      samples: samples.map(s => ({
+        t: s.t, lat: s.lat, lon: s.lon,
+        alt_ft: s.alt_ft ?? null, speed_kt: s.speed_kt ?? null, heading: s.heading ?? null,
+      })),
+    });
+    await clearRecording();
+    return { saved: true, flightId: created.id };
+  } catch {
+    return { saved: false };
+  }
 }

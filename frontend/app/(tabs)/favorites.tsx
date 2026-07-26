@@ -7,22 +7,31 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { spacing, radius, ColorPalette} from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Favorite } from '@/src/api/client';
+import { useAuth } from '@/src/context/AuthContext';
 
 export default function Favorites() {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
+  const { user } = useAuth();
   const [favs, setFavs] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    // Favorites are account-tied — nothing to load for an anonymous
+    // user, so skip the call entirely rather than let it fail with a 401.
+    if (!user) {
+      setFavs([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const r = await api.listFavorites();
       setFavs(r);
     } catch {}
     setLoading(false);
-  }, []);
+  }, [user]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -74,10 +83,12 @@ export default function Favorites() {
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 40 }}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="star-outline" size={48} color={colors.onSurfaceTertiary} />
-              <Text style={styles.emptyTitle}>No saved airports yet</Text>
+              <Ionicons name={user ? 'star-outline' : 'log-in-outline'} size={48} color={colors.onSurfaceTertiary} />
+              <Text style={styles.emptyTitle}>{user ? 'No saved airports yet' : 'Sign in to save airports'}</Text>
               <Text style={styles.emptyText}>
-                Tap the star icon on any location's forecast to save it here for quick access.
+                {user
+                  ? "Tap the star icon on any location's forecast to save it here for quick access."
+                  : 'Saved airports are tied to your account — sign in or create a free account to start saving your frequent spots.'}
               </Text>
             </View>
           }

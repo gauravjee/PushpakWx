@@ -24,6 +24,7 @@ import {
   getRecordStartMs as getPersistedStartMs,
   processLocationUpdate,
   resetStopCountdown,
+  markRecordingStopped,
   FlightSample,
   AUTO_START_MS,
   AUTO_STOP_MS,
@@ -32,6 +33,7 @@ import {
 } from '@/src/services/flightRecording';
 import { ensureNotificationPermission, presentStopWarningNotification } from '@/src/services/stopWarningNotifications';
 import { toMslAltitudeMeters } from '@/src/utils/mslAltitude';
+import { useAuth } from '@/src/context/AuthContext';
 
 type Sample = TrackSample;
 
@@ -73,6 +75,8 @@ export default function InFlight() {
   const [recording, setRecording] = useState(false);
   const [recordStartMs, setRecordStartMs] = useState<number | null>(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [signupGateVisible, setSignupGateVisible] = useState(false);
+  const { user } = useAuth();
   const [saveNote, setSaveNote] = useState('');
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [savedFlightId, setSavedFlightId] = useState<string | null>(null);
@@ -440,6 +444,11 @@ export default function InFlight() {
     recordingRef.current = false;
     setAutoCountdown(null);
     await stopBackgroundLocationUpdates();
+    // Must happen for every stop path, not just auto-stop — otherwise
+    // isRecordingActive() still reports true while this flight sits
+    // pending at the save/signup gate, causing trySaveAnyPendingFlight()
+    // to incorrectly bail out thinking a recording is still in progress.
+    await markRecordingStopped();
     const start = (await getPersistedStartMs()) ?? recordStartMs;
     const end = samples.length > 0 ? samples[samples.length - 1].t : Date.now();
     if (samples.length < 2 || !start) {
@@ -492,6 +501,15 @@ export default function InFlight() {
 
   const saveFlight = async () => {
     if (!pendingStart || !pendingEnd || pendingSamples.length < 2) return;
+    if (!user) {
+      // Deliberately does NOT call clearRecording() — the pending flight
+      // stays exactly where it is in persisted storage, so it's still
+      // there to auto-save the moment sign-up actually completes (see
+      // trySaveAnyPendingFlight, called from verify-email.tsx).
+      setSaveModalVisible(false);
+      setSignupGateVisible(true);
+      return;
+    }
     setSaving(true);
     try {
       const created = await api.createFlight({
@@ -863,6 +881,46 @@ export default function InFlight() {
                 disabled={saving}
               >
                 {saving ? <ActivityIndicator color="#000" /> : <Text style={styles.modalBtnPrimaryText}>SAVE</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={signupGateVisible} transparent animationType="fade" onRequestClose={() => setSignupGateVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard} testID="signup-gate-modal">
+            <View style={styles.modalIcon}>
+              <Ionicons name="checkmark-circle-outline" size={30} color={colors.success} />
+            </View>
+            <Text style={styles.modalTitle}>Flight Recorded</Text>
+            <Text style={[styles.modalStatValue, { fontSize: 20, textAlign: 'center', marginTop: spacing.sm }]}>
+              {pendingStart && pendingEnd ? formatElapsed(pendingEnd - pendingStart) : ''}
+            </Text>
+            <Text style={styles.modalLabel}>
+              Sign up or log in to save this flight to your logbook — it won't be kept otherwise.
+            </Text>
+            <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+              <Pressable
+                testID="signup-gate-register-button"
+                onPress={() => { setSignupGateVisible(false); router.push('/auth/register'); }}
+                style={[styles.modalBtn, styles.modalBtnPrimary, { flex: undefined, width: '100%' }]}
+              >
+                <Text style={styles.modalBtnPrimaryText}>CREATE ACCOUNT &amp; SAVE</Text>
+              </Pressable>
+              <Pressable
+                testID="signup-gate-login-button"
+                onPress={() => { setSignupGateVisible(false); router.push('/auth/login'); }}
+                style={[styles.modalBtn, styles.modalBtnCancel, { flex: undefined, width: '100%' }]}
+              >
+                <Text style={styles.modalBtnCancelText}>LOG IN &amp; SAVE</Text>
+              </Pressable>
+              <Pressable
+                testID="signup-gate-discard-button"
+                onPress={() => { setSignupGateVisible(false); discardFlight(); }}
+                style={[styles.modalBtn, { flex: undefined, width: '100%', backgroundColor: 'transparent' }]}
+              >
+                <Text style={[styles.modalBtnCancelText, { color: colors.onSurfaceTertiary }]}>Discard this flight</Text>
               </Pressable>
             </View>
           </View>
