@@ -124,6 +124,35 @@ export default function Settings() {
     await updatePrefs(patch);
   };
 
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']} testID="settings-screen-anonymous">
+        <View style={styles.anonWrap}>
+          <Ionicons name="person-circle-outline" size={64} color={colors.onSurfaceTertiary} />
+          <Text style={styles.anonTitle}>You're browsing without an account</Text>
+          <Text style={styles.anonBody}>
+            Sign in or create a free account to save flights to your logbook, sync your
+            preferences, and unlock unlimited search.
+          </Text>
+          <Pressable
+            testID="anon-signin-button"
+            onPress={() => router.push('/auth/login')}
+            style={styles.anonPrimaryBtn}
+          >
+            <Text style={styles.anonPrimaryBtnText}>SIGN IN</Text>
+          </Pressable>
+          <Pressable
+            testID="anon-register-button"
+            onPress={() => router.push('/auth/register')}
+            style={styles.anonSecondaryBtn}
+          >
+            <Text style={styles.anonSecondaryBtnText}>CREATE FREE ACCOUNT</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="settings-screen">
       {/* Background logo watermark — see dashboard.tsx for the fuller comment. */}
@@ -680,4 +709,11 @@ const makeStyles = (colors: ColorPalette) => StyleSheet.create({
   betaText: { color: colors.onSurfaceSecondary, fontSize: 11, lineHeight: 16, flex: 1 },
   modalBtnPrimary: { backgroundColor: colors.brand },
   modalBtnPrimaryText: { color: '#000', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
+  anonWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
+  anonTitle: { color: colors.onSurface, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: spacing.lg, marginBottom: spacing.sm },
+  anonBody: { color: colors.onSurfaceSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: spacing.xl },
+  anonPrimaryBtn: { backgroundColor: colors.brand, borderRadius: radius.md, paddingVertical: 14, paddingHorizontal: spacing.xl, width: '100%', alignItems: 'center' },
+  anonPrimaryBtnText: { color: '#000', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
+  anonSecondaryBtn: { marginTop: spacing.sm, borderRadius: radius.md, paddingVertical: 14, paddingHorizontal: spacing.xl, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  anonSecondaryBtnText: { color: colors.onSurface, fontWeight: '800', letterSpacing: 1, fontSize: 13 },
 });
