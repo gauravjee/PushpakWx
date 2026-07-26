@@ -106,6 +106,19 @@ export async function beginRecording(startMs: number): Promise<void> {
   await storage.setItem(KEY_PENDING_STOPPED, false);
 }
 
+/**
+ * Marks a flight as stopped WITHOUT clearing its pending sample data —
+ * used by a manual stop (the button), as distinct from clearRecording()
+ * which is only appropriate once the flight has actually been saved or
+ * explicitly discarded. Without this, isRecordingActive() would still
+ * report true for a manually-stopped flight sitting at the sign-up gate,
+ * which made trySaveAnyPendingFlight() bail out immediately, treating a
+ * genuinely-finished recording as if it were still in progress.
+ */
+export async function markRecordingStopped(): Promise<void> {
+  await storage.setItem(KEY_RECORDING_ACTIVE, false);
+}
+
 // Clears recording state entirely — call after a flight has been fully
 // saved (or discarded), once its samples are no longer needed in storage.
 export async function clearRecording(): Promise<void> {

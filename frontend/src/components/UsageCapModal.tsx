@@ -8,12 +8,14 @@ import { useThemeColors } from '@/src/context/ThemeContext';
 type Props = {
   visible: boolean;
   onClose: () => void;
+  kind: 'airport_search' | 'route_check';
 };
 
-export function UsageCapModal({ visible, onClose }: Props) {
+export function UsageCapModal({ visible, onClose, kind }: Props) {
   const colors = useThemeColors();
   const styles = useMemoStyles(colors);
   const router = useRouter();
+  const label = kind === 'route_check' ? 'route checks' : 'searches';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -22,9 +24,9 @@ export function UsageCapModal({ visible, onClose }: Props) {
           <View style={styles.icon}>
             <Ionicons name="lock-closed-outline" size={28} color={colors.brand} />
           </View>
-          <Text style={styles.title}>You've used your 5 free searches</Text>
+          <Text style={styles.title}>You've used your 5 free {label}</Text>
           <Text style={styles.body}>
-            Sign up free to keep searching — plus save flights to your logbook.
+            Sign up free to keep going — plus save flights to your logbook.
           </Text>
           <Pressable
             testID="cap-modal-register"

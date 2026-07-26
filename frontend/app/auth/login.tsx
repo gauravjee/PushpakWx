@@ -11,13 +11,14 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Link } from 'expo-router';
 import { colors, spacing, radius } from '@/src/theme';
 import { useAuth } from '@/src/context/AuthContext';
+import { trySaveAnyPendingFlight } from '@/src/services/flightRecording';
 
 // Web-only: suppresses the browser's native focus ring (a separate `outline`
 // from `border`), which would otherwise stay blue regardless of our custom
@@ -49,7 +50,13 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email.trim(), password);
-      router.replace('/(tabs)/dashboard');
+      const result = await trySaveAnyPendingFlight();
+      if (result.saved) {
+        Alert.alert('Flight saved', 'Your recorded flight has been added to your logbook.');
+        router.replace('/logbook');
+      } else {
+        router.replace('/(tabs)/dashboard');
+      }
     } catch (e: any) {
       const msg = e.message || 'Login failed';
       // Backend returns a 403 with this phrase when the account exists but

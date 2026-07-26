@@ -165,7 +165,7 @@ export default function Search() {
           )}
         />
       )}
-      <UsageCapModal visible={capModalVisible} onClose={() => setCapModalVisible(false)} />
+      <UsageCapModal visible={capModalVisible} onClose={() => setCapModalVisible(false)} kind="airport_search" />
     </SafeAreaView>
   );
 }

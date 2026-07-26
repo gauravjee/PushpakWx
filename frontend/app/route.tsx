@@ -289,7 +289,7 @@ export default function RouteScreen() {  const colors = useThemeColors();
         onClose={() => setPickerFor(null)}
         onPick={(a) => pickerFor && setAirport(pickerFor, a)}
       />
-      <UsageCapModal visible={capModalVisible} onClose={() => setCapModalVisible(false)} />
+      <UsageCapModal visible={capModalVisible} onClose={() => setCapModalVisible(false)} kind="route_check" />
     </SafeAreaView>
   );
 }

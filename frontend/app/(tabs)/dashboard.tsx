@@ -10,6 +10,7 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { spacing, radius, ColorPalette } from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Airport } from '@/src/api/client';
+import { useAuth } from '@/src/context/AuthContext';
 import { usePrefs } from '@/src/context/PrefsContext';
 import {
   computeFlightCategory, estimateCeilingFt, categoryColor, categoryLabel,
@@ -38,6 +39,7 @@ export default function Dashboard() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const params = useLocalSearchParams<{ lat?: string; lon?: string; label?: string; sub?: string; icao?: string; elevation?: string }>();
   const { prefs } = usePrefs();
+  const { user } = useAuth();
   const router = useRouter();
   const [loc, setLoc] = useState<LocationInfo | null>(null);
   const [wx, setWx] = useState<any>(null);
@@ -56,12 +58,16 @@ export default function Dashboard() {
     try {
       const data = await api.forecast(info.lat, info.lon);
       setWx(data);
-      // Check if favorite
-      try {
-        const favs = await api.listFavorites();
-        const match = favs.find(f => (info.icao && f.icao === info.icao) || (Math.abs(f.lat - info.lat) < 0.01 && Math.abs(f.lon - info.lon) < 0.01));
-        if (match) setLoc(prev => prev ? { ...prev, isFavorite: true, favoriteId: match.id } : prev);
-      } catch {}
+      // Check if favorite — favorites are account-tied, so there's
+      // nothing to check for an anonymous user; skip the call entirely
+      // rather than let it fail with a 401 every time.
+      if (user) {
+        try {
+          const favs = await api.listFavorites();
+          const match = favs.find(f => (info.icao && f.icao === info.icao) || (Math.abs(f.lat - info.lat) < 0.01 && Math.abs(f.lon - info.lon) < 0.01));
+          if (match) setLoc(prev => prev ? { ...prev, isFavorite: true, favoriteId: match.id } : prev);
+        } catch {}
+      }
       // Fetch METAR/TAF if we have an ICAO
       if (info.icao) {
         try {
@@ -71,7 +77,14 @@ export default function Dashboard() {
         } catch {}
       }
     } catch (e: any) {
-      setError(e.message || 'Failed to load weather');
+      const msg = e.message || 'Failed to load weather';
+      // React Native's fetch throws this exact string for genuine
+      // connectivity failures — worth surfacing clearly, rather than the
+      // raw technical message, since it's the single most common reason
+      // this screen fails and the most actionable one for the person to
+      // actually do something about (check their connection, not "retry"
+      // blindly hoping it was transient).
+      setError(msg.includes('Network request failed') ? 'No internet connection. Check your connection and try again.' : msg);
     }
   }, []);
 
@@ -147,6 +160,10 @@ export default function Dashboard() {
 
   const toggleFavorite = async () => {
     if (!loc || savingFav) return;
+    if (!user) {
+      Alert.alert('Sign in required', 'Saved airports are tied to your account — sign in or create a free account to save this one.');
+      return;
+    }
     setSavingFav(true);
     try {
       if (loc.isFavorite && loc.favoriteId) {

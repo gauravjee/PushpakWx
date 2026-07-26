@@ -90,7 +90,7 @@ export function TurnstileVerification({ onVerified, onError }: Props) {
         <WebView
           testID="turnstile-webview"
           originWhitelist={['*']}
-          source={{ html: buildHtml(SITE_KEY) }}
+          source={{ html: buildHtml(SITE_KEY), baseUrl: 'https://pushpakwx.vercel.app' }}
           onMessage={handleMessage}
           style={{ backgroundColor: 'transparent' }}
           javaScriptEnabled
