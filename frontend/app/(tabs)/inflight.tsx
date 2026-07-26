@@ -32,6 +32,7 @@ import {
 } from '@/src/services/flightRecording';
 import { ensureNotificationPermission, presentStopWarningNotification } from '@/src/services/stopWarningNotifications';
 import { toMslAltitudeMeters } from '@/src/utils/mslAltitude';
+import { useAuth } from '@/src/context/AuthContext';
 
 type Sample = TrackSample;
 
@@ -73,6 +74,8 @@ export default function InFlight() {
   const [recording, setRecording] = useState(false);
   const [recordStartMs, setRecordStartMs] = useState<number | null>(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [signupGateVisible, setSignupGateVisible] = useState(false);
+  const { user } = useAuth();
   const [saveNote, setSaveNote] = useState('');
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [savedFlightId, setSavedFlightId] = useState<string | null>(null);
@@ -492,6 +495,15 @@ export default function InFlight() {
 
   const saveFlight = async () => {
     if (!pendingStart || !pendingEnd || pendingSamples.length < 2) return;
+    if (!user) {
+      // Deliberately does NOT call clearRecording() — the pending flight
+      // stays exactly where it is in persisted storage, so it's still
+      // there to auto-save the moment sign-up actually completes (see
+      // trySaveAnyPendingFlight, called from verify-email.tsx).
+      setSaveModalVisible(false);
+      setSignupGateVisible(true);
+      return;
+    }
     setSaving(true);
     try {
       const created = await api.createFlight({
@@ -863,6 +875,39 @@ export default function InFlight() {
                 disabled={saving}
               >
                 {saving ? <ActivityIndicator color="#000" /> : <Text style={styles.modalBtnPrimaryText}>SAVE</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={signupGateVisible} transparent animationType="fade" onRequestClose={() => setSignupGateVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard} testID="signup-gate-modal">
+            <View style={styles.modalIcon}>
+              <Ionicons name="checkmark-circle-outline" size={30} color={colors.success} />
+            </View>
+            <Text style={styles.modalTitle}>Flight Recorded</Text>
+            <Text style={[styles.modalStatValue, { fontSize: 20, textAlign: 'center', marginTop: spacing.sm }]}>
+              {pendingStart && pendingEnd ? formatElapsed(pendingEnd - pendingStart) : ''}
+            </Text>
+            <Text style={styles.modalLabel}>
+              Sign up to save this flight to your logbook — it won't be kept otherwise.
+            </Text>
+            <View style={styles.modalBtnRow}>
+              <Pressable
+                testID="signup-gate-discard-button"
+                onPress={() => { setSignupGateVisible(false); discardFlight(); }}
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+              >
+                <Text style={styles.modalBtnCancelText}>DISCARD</Text>
+              </Pressable>
+              <Pressable
+                testID="signup-gate-register-button"
+                onPress={() => { setSignupGateVisible(false); router.push('/auth/register'); }}
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+              >
+                <Text style={styles.modalBtnPrimaryText}>SAVE &amp; CREATE ACCOUNT</Text>
               </Pressable>
             </View>
           </View>

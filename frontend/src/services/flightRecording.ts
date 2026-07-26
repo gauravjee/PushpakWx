@@ -247,3 +247,38 @@ export async function resetStopCountdown(): Promise<void> {
   state.warningNotified = false;
   await setAutoState(state);
 }
+
+/**
+ * Called right after someone completes email verification (the point a
+ * real, valid session actually exists — registration alone doesn't grant
+ * one). If a flight was recorded anonymously and left pending a sign-up
+ * gate, this saves it immediately using the data already sitting in
+ * storage — no second manual "tap Save again" step required. Safe to call
+ * unconditionally on every successful verification; it's a no-op if
+ * there's nothing pending.
+ */
+export async function trySaveAnyPendingFlight(): Promise<{ saved: boolean; flightId?: string }> {
+  const recording = await isRecordingActive();
+  if (recording) return { saved: false };
+  const samples = await getSamples();
+  const start = await getRecordStartMs();
+  if (samples.length < 2 || !start) return { saved: false };
+  try {
+    // Imported lazily to avoid making this module depend on the API
+    // client (and its own transitive imports) for the common case where
+    // this function is called and there's nothing pending to save.
+    const { api } = await import('@/src/api/client');
+    const created = await api.createFlight({
+      started_at: new Date(start).toISOString(),
+      ended_at: new Date(samples[samples.length - 1].t).toISOString(),
+      samples: samples.map(s => ({
+        t: s.t, lat: s.lat, lon: s.lon,
+        alt_ft: s.alt_ft ?? null, speed_kt: s.speed_kt ?? null, heading: s.heading ?? null,
+      })),
+    });
+    await clearRecording();
+    return { saved: true, flightId: created.id };
+  } catch {
+    return { saved: false };
+  }
+}
