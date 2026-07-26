@@ -84,7 +84,7 @@ export default function Dashboard() {
       // this screen fails and the most actionable one for the person to
       // actually do something about (check their connection, not "retry"
       // blindly hoping it was transient).
-      setError(msg.includes('Network request failed') ? 'No internet connection. Check your connection and try again.' : msg);
+      setError(msg.includes('Network request failed') ? 'No internet connection!\nCheck your connection and try again!' : msg);
     }
   }, []);
 
