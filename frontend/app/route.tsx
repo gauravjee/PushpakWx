@@ -10,6 +10,9 @@ import { spacing, radius, ColorPalette } from '@/src/theme';
 import { useThemeColors } from '@/src/context/ThemeContext';
 import { api, Airport } from '@/src/api/client';
 import { usePrefs } from '@/src/context/PrefsContext';
+import { useAuth } from '@/src/context/AuthContext';
+import { checkAndUse } from '@/src/utils/anonymousAccess';
+import { UsageCapModal } from '@/src/components/UsageCapModal';
 import {
   computeFlightCategory, estimateCeilingFt, categoryColor,
   convertWind, windUnitLabel, convertTemp, tempUnitLabel,
@@ -66,6 +69,8 @@ export default function RouteScreen() {  const colors = useThemeColors();
   const [cruiseKt, setCruiseKt] = useState('120');
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
+  const { user } = useAuth();
+  const [capModalVisible, setCapModalVisible] = useState(false);
 
   const setAirport = (key: string, airport: Airport) => {
     setWaypoints(prev => prev.map(w => (w.key === key ? { ...w, airport, forecast: undefined, metarCategory: undefined } : w)));
@@ -91,6 +96,13 @@ export default function RouteScreen() {  const colors = useThemeColors();
   };
 
   const compute = useCallback(async () => {
+    if (!user) {
+      const result = await checkAndUse('route_check');
+      if (!result.allowed) {
+        setCapModalVisible(true);
+        return;
+      }
+    }
     const speed = parseFloat(cruiseKt) || 120;
     if (speed <= 0) return;
 
@@ -162,7 +174,7 @@ export default function RouteScreen() {  const colors = useThemeColors();
 
     setWaypoints(results);
     setComputing(false);
-  }, [cruiseKt, waypoints]);
+  }, [cruiseKt, waypoints, user]);
 
   // Auto-compute when both endpoints have airports
   useEffect(() => {
@@ -277,6 +289,7 @@ export default function RouteScreen() {  const colors = useThemeColors();
         onClose={() => setPickerFor(null)}
         onPick={(a) => pickerFor && setAirport(pickerFor, a)}
       />
+      <UsageCapModal visible={capModalVisible} onClose={() => setCapModalVisible(false)} />
     </SafeAreaView>
   );
 }
