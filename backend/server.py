@@ -107,6 +107,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 FROM_EMAIL = os.environ.get('FROM_EMAIL', 'onboarding@resend.dev')
 
+# Cloudflare Turnstile — server-side verification for anonymous (pre-login)
+# access, so bot/scripted traffic gets filtered before it can consume the
+# free-tier search/route-check allowance at all.
+TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '')
+
 #app = FastAPI(title="PushpakWX API")
 app = FastAPI(title="PushpakWX API", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
@@ -149,6 +154,14 @@ class DeleteAccountRequestStart(BaseModel):
 
 class DeleteAccountConfirm(BaseModel):
     code: str
+
+class VerifyDeviceRequest(BaseModel):
+    device_id: str
+    turnstile_token: str
+
+class CheckAndUseRequest(BaseModel):
+    device_id: str
+    action: str  # "airport_search" | "route_check"
 
 class UserPublic(BaseModel):
     id: str
@@ -628,6 +641,79 @@ async def delete_account_confirm(request: Request, payload: DeleteAccountConfirm
     await db.flights.delete_many({"user_id": user_id})
     await db.users.delete_one({"id": user_id})
     return {"message": "Account and all associated data deleted successfully"}
+
+# ---------- Anonymous access (pre-login browsing) ----------
+# Lets someone use core lookup features (airport/weather search, route
+# checks) without an account, up to a small lifetime cap per device, before
+# prompting signup — verified once via Cloudflare Turnstile so the free
+# allowance isn't just consumed by scripted/bot traffic.
+
+ANONYMOUS_ACTION_FIELDS = {
+    "airport_search": "airport_search_count",
+    "route_check": "route_check_count",
+}
+ANONYMOUS_ACTION_CAP = 5
+
+async def _verify_turnstile(token: str) -> bool:
+    if not TURNSTILE_SECRET_KEY:
+        # Not yet provisioned — fail open with a warning rather than
+        # blocking all anonymous access while this is being rolled out.
+        logging.getLogger(__name__).warning("TURNSTILE_SECRET_KEY not set — skipping Turnstile verification")
+        return True
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            r = await http_client.post(
+                "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                data={"secret": TURNSTILE_SECRET_KEY, "response": token},
+            )
+            data = r.json()
+            return bool(data.get("success"))
+    except Exception:
+        logging.getLogger(__name__).exception("Turnstile verification request failed")
+        return False
+
+@api_router.post("/anonymous/verify-device")
+@limiter.limit("10/hour")
+async def verify_device(request: Request, payload: VerifyDeviceRequest):
+    ok = await _verify_turnstile(payload.turnstile_token)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Verification failed")
+    await db.anonymous_usage.update_one(
+        {"device_id": payload.device_id},
+        {
+            "$set": {"verified": True, "verified_at": datetime.now(timezone.utc).isoformat()},
+            "$setOnInsert": {
+                "device_id": payload.device_id,
+                "airport_search_count": 0,
+                "route_check_count": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+        },
+        upsert=True,
+    )
+    return {"verified": True}
+
+@api_router.post("/anonymous/check-and-use")
+@limiter.limit("30/minute")
+async def check_and_use(request: Request, payload: CheckAndUseRequest):
+    field = ANONYMOUS_ACTION_FIELDS.get(payload.action)
+    if not field:
+        raise HTTPException(status_code=400, detail=f"Unknown action; expected one of {list(ANONYMOUS_ACTION_FIELDS)}")
+
+    doc = await db.anonymous_usage.find_one({"device_id": payload.device_id})
+    if not doc or not doc.get("verified"):
+        raise HTTPException(status_code=403, detail="Device not verified — call /anonymous/verify-device first")
+
+    result = await db.anonymous_usage.update_one(
+        {"device_id": payload.device_id, field: {"$lt": ANONYMOUS_ACTION_CAP}},
+        {"$inc": {field: 1}, "$set": {"last_used_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if result.matched_count == 0:
+        return {"allowed": False, "remaining": 0}
+
+    updated = await db.anonymous_usage.find_one({"device_id": payload.device_id}, {"_id": 0, field: 1})
+    remaining = max(0, ANONYMOUS_ACTION_CAP - updated[field])
+    return {"allowed": True, "remaining": remaining}
 
 # ---------- Airports ----------
 @api_router.get("/airports/search")
