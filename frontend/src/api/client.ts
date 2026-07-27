@@ -42,7 +42,20 @@ async function request<T>(path: string, options: RequestInit = {}, auth = false)
     const token = await storage.secureGet<string>(TOKEN_KEY, '');
     if (token) headers['Authorization'] = `Bearer ${token}`;
   }
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (e: any) {
+    // React Native's fetch throws this exact message for genuine
+    // connectivity failures — caught here, at the single shared source
+    // every screen's API calls already go through, so login, registration,
+    // weather, and everything else all get the same clear message for
+    // free, rather than each screen needing its own special-case check.
+    if ((e?.message || '').includes('Network request failed')) {
+      throw new Error('No internet connection!\nCheck your connection and try again!');
+    }
+    throw e;
+  }
   if (!res.ok) {
     let detail = 'Request failed';
     try {

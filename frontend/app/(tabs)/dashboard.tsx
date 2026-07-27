@@ -77,14 +77,9 @@ export default function Dashboard() {
         } catch {}
       }
     } catch (e: any) {
-      const msg = e.message || 'Failed to load weather';
-      // React Native's fetch throws this exact string for genuine
-      // connectivity failures — worth surfacing clearly, rather than the
-      // raw technical message, since it's the single most common reason
-      // this screen fails and the most actionable one for the person to
-      // actually do something about (check their connection, not "retry"
-      // blindly hoping it was transient).
-      setError(msg.includes('Network request failed') ? 'No internet connection!\nCheck your connection and try again!' : msg);
+      // The shared API client already rewrites genuine connectivity
+      // failures into a clear message — nothing special-cased needed here.
+      setError(e.message || 'Failed to load weather');
     }
   }, []);
 
