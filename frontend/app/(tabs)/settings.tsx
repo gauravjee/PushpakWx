@@ -252,7 +252,7 @@ export default function Settings() {
         <Section title="ABOUT">
           <InfoRow icon="apps-outline" label="App" value={Constants.expoConfig?.name ?? 'PushpakWx'} />
           <InfoRow icon="information-circle-outline" label="Version" value={Constants.expoConfig?.version ?? '—'} />
-          <InfoRow icon="build-outline" label="Build" value={String(Constants.androidManifest?.versionCode ?? '—')} />
+          <InfoRow icon="build-outline" label="Build" value={process.env.EXPO_PUBLIC_BUILD_NUMBER || 'dev'} />
           <InfoRow icon="cloud-outline" label="Weather data" value="Open-Meteo" />
           <InfoRow
             icon="warning-outline"
