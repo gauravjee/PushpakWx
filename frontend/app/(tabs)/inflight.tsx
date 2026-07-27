@@ -32,7 +32,12 @@ import {
   STOP_WARNING_MS,
 } from '@/src/services/flightRecording';
 import { ensureNotificationPermission, presentStopWarningNotification } from '@/src/services/stopWarningNotifications';
-import { toMslAltitudeMeters } from '@/src/utils/mslAltitude';
+import { getReliableMslAltitudeFt } from '@/src/utils/mslAltitude';
+import {
+  hasPromptedBatteryOptimization,
+  markBatteryOptimizationPrompted,
+  requestBatteryOptimizationExemption,
+} from '@/src/utils/batteryOptimization';
 import { useAuth } from '@/src/context/AuthContext';
 
 type Sample = TrackSample;
@@ -260,17 +265,22 @@ export default function InFlight() {
     (async () => {
       try {
         locSubRef.current = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
-          (l) => {
+          { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 500, distanceInterval: 0 },
+          async (l) => {
             if (cancelled) return;
             setLoc(l);
-            const mslAltitudeM = l.coords.altitude != null
-              ? toMslAltitudeMeters(l.coords.latitude, l.coords.longitude, l.coords.altitude)
+            const reliableAltFt = l.coords.altitude != null
+              ? await getReliableMslAltitudeFt(
+                  l.coords.latitude,
+                  l.coords.longitude,
+                  l.coords.altitude,
+                  l.coords.altitudeAccuracy ?? null,
+                )
               : null;
-            const rawAltFt = mslAltitudeM != null ? mslAltitudeM * 3.281 : 0;
+            if (cancelled) return;
             const rawAltAccFt = l.coords.altitudeAccuracy != null ? l.coords.altitudeAccuracy * 3.281 : null;
-            const altFt = mslAltitudeM != null ? smoothAltitude(rawAltFt, rawAltAccFt) : 0;
-            setSmoothAltFt(mslAltitudeM != null ? altFt : null);
+            const altFt = reliableAltFt != null ? smoothAltitude(reliableAltFt, rawAltAccFt) : 0;
+            setSmoothAltFt(reliableAltFt != null ? altFt : null);
             const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
             const currentHeading = hdgRef.current;
@@ -284,7 +294,7 @@ export default function InFlight() {
               t: now,
               lat: l.coords.latitude,
               lon: l.coords.longitude,
-              alt_ft: mslAltitudeM != null ? altFt : undefined,
+              alt_ft: reliableAltFt != null ? altFt : undefined,
               speed_kt: l.coords.speed != null && l.coords.speed >= 0 ? speedKt : undefined,
               heading: currentHeading,
             };
@@ -296,10 +306,12 @@ export default function InFlight() {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
                 finishStoppedRecordingRef.current(result.samples);
               } else if (result.recording) {
-                // The persisted array is the source of truth (it's what
-                // actually gets saved) — mirror it into local state purely
-                // so the live UI (sample count, track preview) stays current.
-                setSamples(result.samples.map(toLocalSample));
+                // Appended directly here rather than round-tripping through
+                // the shared service's storage on every single update — the
+                // persisted chunks remain the actual source of truth (what
+                // gets saved), this is purely for the live UI display
+                // (sample count, track preview) to stay current cheaply.
+                setSamples((prev) => [...prev, toLocalSample(sample)]);
               }
               if (result.shouldWarn) {
                 presentStopWarningNotification(STOP_WARNING_MS / 1000).catch(() => {});
@@ -399,6 +411,21 @@ export default function InFlight() {
     recordingRef.current = true;
     setAutoCountdown(null);
     beginRecording(startMs).catch(() => {});
+    // One-time, not on every recording — directly relevant to the
+    // background sample-rate gaps found in real flight data. Doesn't
+    // block starting the actual recording either way.
+    hasPromptedBatteryOptimization().then((prompted) => {
+      if (prompted) return;
+      markBatteryOptimizationPrompted().catch(() => {});
+      Alert.alert(
+        'Keep tracking reliable',
+        'For the most reliable GPS tracking while the phone is stowed away during flight, allow PushpakWx to run without battery restrictions.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Allow', onPress: () => requestBatteryOptimizationExemption() },
+        ],
+      );
+    }).catch(() => {});
     // Best-effort — if denied, the stop-warning still shows as the
     // already-verified in-app popup whenever the screen happens to be
     // open, it just won't also reach the lock screen.
@@ -411,7 +438,14 @@ export default function InFlight() {
     // screen stops receiving them (backgrounded/locked).
     Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
       accuracy: Location.Accuracy.BestForNavigation,
-      timeInterval: 5000,
+      // Requesting the same 2Hz rate as foreground — Android's own power
+      // management still throttles actual background delivery well below
+      // whatever's requested here as a flight goes on regardless (a real,
+      // separate platform limitation, not something this setting alone
+      // fixes), but requesting the faster rate gives it the best chance
+      // of delivering closer to it, especially combined with exempting
+      // this app from battery optimization.
+      timeInterval: 500,
       distanceInterval: 0,
       showsBackgroundLocationIndicator: true,
       foregroundService: {

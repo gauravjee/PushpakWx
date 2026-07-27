@@ -9,6 +9,7 @@
 // in a lightweight, headless JS context with no mounted component — anything
 // kept only in memory would be lost the moment that context is torn down.
 import { storage } from '@/src/utils/storage';
+import { resetLastGoodAltitude } from '@/src/utils/mslAltitude';
 
 export type FlightSample = {
   t: number;
@@ -38,7 +39,16 @@ type AutoDetectState = {
 
 const KEY_RECORDING_ACTIVE = 'flight_recording_active';
 const KEY_RECORD_START_MS = 'flight_recording_start_ms';
-const KEY_SAMPLES = 'flight_recording_samples';
+// Samples are stored in fixed-size chunks rather than one growing blob —
+// each append only ever reads/rewrites its current, small chunk (bounded
+// cost), never the entire flight's data. Rewriting one growing JSON blob
+// on every single GPS update meant a multi-hour flight's later samples
+// were each paying the cost of re-serializing everything recorded so far
+// — real, avoidable overhead exactly during the part of a long flight
+// where it matters most.
+const KEY_SAMPLE_COUNT = 'flight_recording_sample_count';
+const KEY_CHUNK_PREFIX = 'flight_recording_chunk_';
+const CHUNK_SIZE = 100;
 const KEY_AUTO_STATE = 'flight_recording_autostate';
 // Set when auto-stop fires while the app wasn't in the foreground to see it —
 // checked on next launch/resume so the post-flight details form can still be
@@ -81,29 +91,80 @@ export async function getRecordStartMs(): Promise<number | null> {
   return storage.getItem<number | null>(KEY_RECORD_START_MS, null);
 }
 
-export async function getSamples(): Promise<FlightSample[]> {
-  const raw = await storage.getItem<string>(KEY_SAMPLES, '');
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as FlightSample[];
-  } catch {
-    return [];
-  }
+async function getChunkCount(): Promise<number> {
+  const count = await storage.getItem<number>(KEY_SAMPLE_COUNT, 0);
+  return Math.ceil((count ?? 0) / CHUNK_SIZE);
 }
 
-async function appendSample(sample: FlightSample): Promise<FlightSample[]> {
-  const current = await getSamples();
-  const updated = [...current, sample];
-  await storage.setItem(KEY_SAMPLES, JSON.stringify(updated));
-  return updated;
+export async function getSampleCount(): Promise<number> {
+  return (await storage.getItem<number>(KEY_SAMPLE_COUNT, 0)) ?? 0;
+}
+
+export async function getSamples(): Promise<FlightSample[]> {
+  const chunkCount = await getChunkCount();
+  const all: FlightSample[] = [];
+  for (let i = 0; i < chunkCount; i++) {
+    const raw = await storage.getItem<string>(`${KEY_CHUNK_PREFIX}${i}`, '');
+    if (!raw) continue;
+    try {
+      all.push(...(JSON.parse(raw) as FlightSample[]));
+    } catch {
+      // A corrupted single chunk shouldn't take down the whole flight's
+      // data — skip it and keep assembling the rest.
+    }
+  }
+  return all;
+}
+
+/**
+ * Appends one sample to whichever chunk is currently open, creating a new
+ * chunk once the current one fills up. Bounded, constant-size work per
+ * call — reads/rewrites at most CHUNK_SIZE samples, never the full flight.
+ * Deliberately does NOT return the updated full array — nothing that
+ * calls this on every location update actually needs it (the foreground
+ * screen maintains its own local display state instead; the one place
+ * that genuinely needs the complete set, finalizing a stopped flight,
+ * calls getSamples() directly, which is fine as a one-time read).
+ */
+async function appendSample(sample: FlightSample): Promise<void> {
+  const count = (await storage.getItem<number>(KEY_SAMPLE_COUNT, 0)) ?? 0;
+  const chunkIndex = Math.floor(count / CHUNK_SIZE);
+  const positionInChunk = count % CHUNK_SIZE;
+  const chunkKey = `${KEY_CHUNK_PREFIX}${chunkIndex}`;
+
+  if (positionInChunk === 0) {
+    await storage.setItem(chunkKey, JSON.stringify([sample]));
+  } else {
+    const raw = await storage.getItem<string>(chunkKey, '');
+    let chunk: FlightSample[] = [];
+    if (raw) {
+      try {
+        chunk = JSON.parse(raw) as FlightSample[];
+      } catch {
+        chunk = [];
+      }
+    }
+    chunk.push(sample);
+    await storage.setItem(chunkKey, JSON.stringify(chunk));
+  }
+  await storage.setItem(KEY_SAMPLE_COUNT, count + 1);
+}
+
+async function removeAllChunks(): Promise<void> {
+  const chunkCount = await getChunkCount();
+  for (let i = 0; i < chunkCount; i++) {
+    await storage.removeItem(`${KEY_CHUNK_PREFIX}${i}`);
+  }
+  await storage.removeItem(KEY_SAMPLE_COUNT);
 }
 
 export async function beginRecording(startMs: number): Promise<void> {
   await storage.setItem(KEY_RECORDING_ACTIVE, true);
   await storage.setItem(KEY_RECORD_START_MS, startMs);
-  await storage.setItem(KEY_SAMPLES, JSON.stringify([]));
+  await removeAllChunks();
   await setAutoState({ fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false });
   await storage.setItem(KEY_PENDING_STOPPED, false);
+  await resetLastGoodAltitude();
 }
 
 /**
@@ -124,7 +185,7 @@ export async function markRecordingStopped(): Promise<void> {
 export async function clearRecording(): Promise<void> {
   await storage.setItem(KEY_RECORDING_ACTIVE, false);
   await storage.removeItem(KEY_RECORD_START_MS);
-  await storage.removeItem(KEY_SAMPLES);
+  await removeAllChunks();
   await storage.removeItem(KEY_AUTO_STATE);
   await storage.setItem(KEY_PENDING_STOPPED, false);
 }
@@ -175,10 +236,10 @@ export async function processLocationUpdate(
   if (!autoDetectEnabled) {
     const emptyState = { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
     if (recording) {
-      const samples = await appendSample(sample);
-      return { samples, action: null, autoState: emptyState, recording, shouldWarn: false };
+      await appendSample(sample);
+      return { samples: [], action: null, autoState: emptyState, recording, shouldWarn: false };
     }
-    return { samples: await getSamples(), action: null, autoState: emptyState, recording, shouldWarn: false };
+    return { samples: [], action: null, autoState: emptyState, recording, shouldWarn: false };
   }
 
   const now = sample.t;
@@ -202,7 +263,7 @@ export async function processLocationUpdate(
   }
 
   // Currently recording: always append the sample first, then evaluate stop.
-  const samples = await appendSample(sample);
+  await appendSample(sample);
 
   // Once flight speed is reached, that's sticky for the rest of the
   // session — a later ground hold shouldn't fall back to the generous
@@ -221,6 +282,10 @@ export async function processLocationUpdate(
       await storage.setItem(KEY_PENDING_STOPPED, true);
       const cleared = { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
       await setAutoState(cleared);
+      // The one case that genuinely needs the complete set — a one-time
+      // read at the exact moment of stopping, not something happening on
+      // every single update, so a full chunk-by-chunk read here is fine.
+      const samples = await getSamples();
       return { samples, action: 'stopped', autoState: cleared, recording: false, shouldWarn: false };
     }
     let shouldWarn = false;
@@ -229,7 +294,7 @@ export async function processLocationUpdate(
       shouldWarn = true;
     }
     await setAutoState(state);
-    return { samples, action: null, autoState: state, recording: true, shouldWarn };
+    return { samples: [], action: null, autoState: state, recording: true, shouldWarn };
   } else if (state.slowSince != null) {
     if (state.fastBlipSince == null) state.fastBlipSince = now;
     const fastElapsed = now - state.fastBlipSince;
@@ -243,7 +308,7 @@ export async function processLocationUpdate(
     await setAutoState(state);
   }
 
-  return { samples, action: null, autoState: state, recording: true, shouldWarn: false };
+  return { samples: [], action: null, autoState: state, recording: true, shouldWarn: false };
 }
 
 /**
