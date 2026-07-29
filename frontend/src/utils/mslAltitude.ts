@@ -44,7 +44,7 @@ export function toMslAltitudeMeters(lat: number, lon: number, rawAltitudeM: numb
 // GPS vertical position is inherently far less reliable than horizontal —
 // it needs much better satellite geometry to compute accurately, and that
 // degrades significantly when a phone is stowed away with reduced signal
-// (confirmed against a real flight: position kept updating correctly
+// (confirmed against real flights: position kept updating correctly
 // throughout, while altitude stayed frozen for long stretches — exactly
 // what happens when the GPS chip keeps reporting a low-confidence, stale
 // vertical fix while horizontal position is still solid).
@@ -55,22 +55,35 @@ export function toMslAltitudeMeters(lat: number, lon: number, rawAltitudeM: numb
 // readings worse than a reasonable threshold outright, falling back to
 // the last known GOOD altitude instead of recording an unreliable one.
 //
-// This threshold (30m / ~100ft) is a reasonable starting point given
-// typical GPS vertical accuracy in good conditions, not a precisely
-// calibrated figure — worth revisiting based on further real-flight data.
-const UNRELIABLE_ACCURACY_THRESHOLD_M = 30;
+// A real flight exposed a genuine bug in the first version of this: if
+// accuracy never improved below the threshold for the WHOLE flight, every
+// single reading got rejected forever, freezing on the first value for
+// the entire recording — worse than the original problem, not better.
+// Fixed with a hard ceiling: no matter how poor accuracy stays, a reading
+// gets force-accepted after being stuck too long, since a possibly-noisy
+// but updating value beats a definitely-wrong frozen one.
+const UNRELIABLE_ACCURACY_THRESHOLD_M = 50;
+const MAX_STALE_MS = 60 * 1000;
 const KEY_LAST_GOOD_ALT_FT = 'flight_recording_last_good_alt_ft';
+const KEY_LAST_GOOD_ALT_TIME = 'flight_recording_last_good_alt_time';
 
 export async function getReliableMslAltitudeFt(
   lat: number,
   lon: number,
   rawAltitudeM: number,
   accuracyM: number | null,
+  sampleTimeMs: number,
 ): Promise<number> {
   const correctedFt = toMslAltitudeMeters(lat, lon, rawAltitudeM) * 3.281;
   const isReliable = accuracyM == null || accuracyM <= UNRELIABLE_ACCURACY_THRESHOLD_M;
-  if (isReliable) {
+
+  const lastGoodTime = (await storage.getItem<number>(KEY_LAST_GOOD_ALT_TIME, 0)) ?? 0;
+  const staleForMs = sampleTimeMs - lastGoodTime;
+  const forceAccept = staleForMs > MAX_STALE_MS;
+
+  if (isReliable || forceAccept) {
     await storage.setItem(KEY_LAST_GOOD_ALT_FT, correctedFt);
+    await storage.setItem(KEY_LAST_GOOD_ALT_TIME, sampleTimeMs);
     return correctedFt;
   }
   const lastGood = await storage.getItem<number>(KEY_LAST_GOOD_ALT_FT, correctedFt);
@@ -81,4 +94,5 @@ export async function getReliableMslAltitudeFt(
 // from a previous flight can never leak into a fresh one.
 export async function resetLastGoodAltitude(): Promise<void> {
   await storage.removeItem(KEY_LAST_GOOD_ALT_FT);
+  await storage.removeItem(KEY_LAST_GOOD_ALT_TIME);
 }

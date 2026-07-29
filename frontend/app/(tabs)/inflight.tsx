@@ -33,6 +33,7 @@ import {
 } from '@/src/services/flightRecording';
 import { ensureNotificationPermission, presentStopWarningNotification } from '@/src/services/stopWarningNotifications';
 import { getReliableMslAltitudeFt } from '@/src/utils/mslAltitude';
+import { getSpeedKtWithFallback } from '@/src/utils/derivedSpeed';
 import {
   hasPromptedBatteryOptimization,
   markBatteryOptimizationPrompted,
@@ -275,14 +276,21 @@ export default function InFlight() {
                   l.coords.longitude,
                   l.coords.altitude,
                   l.coords.altitudeAccuracy ?? null,
+                  Date.now(),
                 )
               : null;
             if (cancelled) return;
             const rawAltAccFt = l.coords.altitudeAccuracy != null ? l.coords.altitudeAccuracy * 3.281 : null;
             const altFt = reliableAltFt != null ? smoothAltitude(reliableAltFt, rawAltAccFt) : 0;
             setSmoothAltFt(reliableAltFt != null ? altFt : null);
-            const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
             const now = Date.now();
+            const speedKtOrUndefined = await getSpeedKtWithFallback(
+              l.coords.latitude,
+              l.coords.longitude,
+              now,
+              l.coords.speed,
+            );
+            const speedKt = speedKtOrUndefined ?? 0;
             const currentHeading = hdgRef.current;
 
             // ----- Auto-detect flight start/stop -----
@@ -295,7 +303,7 @@ export default function InFlight() {
               lat: l.coords.latitude,
               lon: l.coords.longitude,
               alt_ft: reliableAltFt != null ? altFt : undefined,
-              speed_kt: l.coords.speed != null && l.coords.speed >= 0 ? speedKt : undefined,
+              speed_kt: speedKtOrUndefined,
               heading: currentHeading,
             };
             processLocationUpdate(speedKt, sample, autoEnabledRef.current).then((result) => {

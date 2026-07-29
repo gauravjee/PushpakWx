@@ -9,6 +9,7 @@ import * as Location from 'expo-location';
 import { processLocationUpdate, isRecordingActive, STOP_WARNING_MS } from './flightRecording';
 import { presentStopWarningNotification } from './stopWarningNotifications';
 import { getReliableMslAltitudeFt } from '../utils/mslAltitude';
+import { getSpeedKtWithFallback } from '../utils/derivedSpeed';
 
 export const BACKGROUND_LOCATION_TASK = 'pushpakwx-background-flight-recording';
 
@@ -25,21 +26,28 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   if (!(await isRecordingActive())) return;
 
   for (const l of locations) {
-    const speedKt = l.coords.speed != null && l.coords.speed >= 0 ? l.coords.speed * 1.9438 : 0;
     const altFt = l.coords.altitude != null
       ? await getReliableMslAltitudeFt(
           l.coords.latitude,
           l.coords.longitude,
           l.coords.altitude,
           l.coords.altitudeAccuracy ?? null,
+          l.timestamp,
         )
       : undefined;
+    const speedKtOrUndefined = await getSpeedKtWithFallback(
+      l.coords.latitude,
+      l.coords.longitude,
+      l.timestamp,
+      l.coords.speed,
+    );
+    const speedKt = speedKtOrUndefined ?? 0;
     const sample = {
       t: l.timestamp,
       lat: l.coords.latitude,
       lon: l.coords.longitude,
       alt_ft: altFt,
-      speed_kt: l.coords.speed != null && l.coords.speed >= 0 ? speedKt : undefined,
+      speed_kt: speedKtOrUndefined,
       heading: l.coords.heading != null && l.coords.heading >= 0 ? l.coords.heading : undefined,
     };
     // autoDetectEnabled is always true here: by the time this task can even

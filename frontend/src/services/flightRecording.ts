@@ -10,6 +10,7 @@
 // kept only in memory would be lost the moment that context is torn down.
 import { storage } from '@/src/utils/storage';
 import { resetLastGoodAltitude } from '@/src/utils/mslAltitude';
+import { resetLastPosition } from '@/src/utils/derivedSpeed';
 
 export type FlightSample = {
   t: number;
@@ -126,7 +127,27 @@ export async function getSamples(): Promise<FlightSample[]> {
  * that genuinely needs the complete set, finalizing a stopped flight,
  * calls getSamples() directly, which is fine as a one-time read).
  */
+// The foreground watcher and background task run concurrently by design
+// (see startRecording in inflight.tsx) — meaning two location updates can
+// genuinely arrive close enough together that their appendSample calls
+// interleave at the same await points, both reading the same sample
+// count before either has written back, and one silently overwriting the
+// other's sample with the count only advancing once instead of twice.
+// Serializing every append through this single promise chain means each
+// call's full read-modify-write cycle completes before the next one
+// starts, regardless of how close together they were triggered.
+let appendQueue: Promise<void> = Promise.resolve();
+
 async function appendSample(sample: FlightSample): Promise<void> {
+  const run = appendQueue.then(() => appendSampleLocked(sample));
+  // Swallow rejection on the queue itself so one failed append doesn't
+  // permanently jam every append after it — the caller of THIS call still
+  // sees any real error via the returned/awaited promise below.
+  appendQueue = run.catch(() => {});
+  return run;
+}
+
+async function appendSampleLocked(sample: FlightSample): Promise<void> {
   const count = (await storage.getItem<number>(KEY_SAMPLE_COUNT, 0)) ?? 0;
   const chunkIndex = Math.floor(count / CHUNK_SIZE);
   const positionInChunk = count % CHUNK_SIZE;
@@ -165,6 +186,7 @@ export async function beginRecording(startMs: number): Promise<void> {
   await setAutoState({ fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false });
   await storage.setItem(KEY_PENDING_STOPPED, false);
   await resetLastGoodAltitude();
+  await resetLastPosition();
 }
 
 /**
