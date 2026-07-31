@@ -50,6 +50,11 @@ const KEY_RECORD_START_MS = 'flight_recording_start_ms';
 const KEY_SAMPLE_COUNT = 'flight_recording_sample_count';
 const KEY_CHUNK_PREFIX = 'flight_recording_chunk_';
 const CHUNK_SIZE = 100;
+// Both watchers can independently deliver a sample for the same GPS
+// moment — reject a new one if it lands within this window of the last
+// one actually appended, since it's almost certainly the other watcher's
+// copy of the same fix, not a genuinely new one.
+const KEY_LAST_APPENDED_TIME = 'flight_recording_last_appended_time';
 const KEY_AUTO_STATE = 'flight_recording_autostate';
 // Set when auto-stop fires while the app wasn't in the foreground to see it —
 // checked on next launch/resume so the post-flight details form can still be
@@ -148,6 +153,27 @@ async function appendSample(sample: FlightSample): Promise<void> {
 }
 
 async function appendSampleLocked(sample: FlightSample): Promise<void> {
+  // Both watchers run concurrently by design, and nothing coordinates
+  // between them — meaning the SAME underlying GPS moment can genuinely
+  // get delivered to both, each independently appending its own sample.
+  // Confirmed against real flight data: not just near-duplicates, but
+  // samples from MINUTES earlier getting redelivered and re-appended
+  // throughout an entire recording — a known Android behavior where a
+  // background batch can overlap with one already processed. This
+  // corrupts any distance/duration calculation that assumes consecutive
+  // samples are actually consecutive in time (confirmed: a genuinely
+  // local bike ride computed as 341nm, because repeatedly jumping back
+  // to an earlier position and forward again adds real, artificial
+  // distance each time).
+  //
+  // The robust fix is simple: samples must be strictly increasing in
+  // time. Anything not newer than the last one actually appended — by
+  // any amount, not just within a short window — is rejected outright.
+  const lastTime = (await storage.getItem<number>(KEY_LAST_APPENDED_TIME, -1)) ?? -1;
+  if (sample.t <= lastTime) {
+    return;
+  }
+
   const count = (await storage.getItem<number>(KEY_SAMPLE_COUNT, 0)) ?? 0;
   const chunkIndex = Math.floor(count / CHUNK_SIZE);
   const positionInChunk = count % CHUNK_SIZE;
@@ -169,6 +195,7 @@ async function appendSampleLocked(sample: FlightSample): Promise<void> {
     await storage.setItem(chunkKey, JSON.stringify(chunk));
   }
   await storage.setItem(KEY_SAMPLE_COUNT, count + 1);
+  await storage.setItem(KEY_LAST_APPENDED_TIME, sample.t);
 }
 
 async function removeAllChunks(): Promise<void> {
@@ -177,6 +204,7 @@ async function removeAllChunks(): Promise<void> {
     await storage.removeItem(`${KEY_CHUNK_PREFIX}${i}`);
   }
   await storage.removeItem(KEY_SAMPLE_COUNT);
+  await storage.removeItem(KEY_LAST_APPENDED_TIME);
 }
 
 export async function beginRecording(startMs: number): Promise<void> {
