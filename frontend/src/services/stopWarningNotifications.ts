@@ -54,6 +54,25 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   return requested.granted;
 }
 
+// Fired when a recording auto-starts with nobody in the foreground to see
+// it happen (background task detected the crossing — see
+// backgroundLocationTask.ts and beginRecording() now being callable from
+// there). Without this, a pilot who stowed the phone before takeoff had no
+// way to know recording had actually started until reopening the app.
+export async function presentAutoStartNotification(): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Flight recording started',
+        body: 'PushpakWx detected takeoff and started recording automatically.',
+      },
+      trigger: null,
+    });
+  } catch (e) {
+    console.warn('[flight-recording] could not present auto-start notification', (e as Error)?.message);
+  }
+}
+
 export async function presentStopWarningNotification(secondsLeft: number): Promise<void> {
   try {
     await ensureCategory();

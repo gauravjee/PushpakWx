@@ -22,6 +22,7 @@ import {
   getSamples as getPersistedSamples,
   hasPendingStoppedFlight,
   getRecordStartMs as getPersistedStartMs,
+  isRecordingActive,
   processLocationUpdate,
   resetStopCountdown,
   markRecordingStopped,
@@ -56,6 +57,7 @@ function toLocalSample(s: FlightSample): Sample {
     altFt: s.alt_ft ?? 0,
     speedKt: s.speed_kt ?? 0,
     heading: s.heading,
+    accM: s.acc_m,
   };
 }
 
@@ -263,6 +265,12 @@ export default function InFlight() {
   useEffect(() => {
     if (permStatus !== 'granted') return;
     let cancelled = false;
+    // Start the background watcher as soon as we have permission, not only
+    // once a recording begins — this is the fix for auto-start being
+    // unreliable once the phone is stowed: the background task now exists
+    // and can observe the 30kt-for-15s crossing on its own, independent of
+    // whether the foreground watcher below is still delivering.
+    startBackgroundLocationUpdates();
     (async () => {
       try {
         locSubRef.current = await Location.watchPositionAsync(
@@ -305,6 +313,7 @@ export default function InFlight() {
               alt_ft: reliableAltFt != null ? altFt : undefined,
               speed_kt: speedKtOrUndefined,
               heading: currentHeading,
+              acc_m: l.coords.accuracy ?? undefined,
             };
             processLocationUpdate(speedKt, sample, autoEnabledRef.current).then((result) => {
               if (cancelled) return;
@@ -407,8 +416,72 @@ export default function InFlight() {
         window.removeEventListener(webOrientationEventNameRef.current, webOrientationHandlerRef.current as any, true);
         webOrientationHandlerRef.current = null;
       }
+      // Only tear down the background watcher if nothing is actually
+      // recording — a flight in progress must keep being tracked even
+      // after this screen unmounts (navigating to another tab, etc.),
+      // exactly as before. If no flight ever started, there's no reason
+      // to leave the foreground-service notification and background GPS
+      // running after the pilot leaves this screen.
+      if (!recordingRef.current) {
+        stopBackgroundLocationUpdates();
+      }
     };
   }, [permStatus]);
+
+  // Starts the background location task. Called as soon as this screen has
+  // location permission — NOT deferred until a recording actually begins —
+  // specifically so the background task exists and can observe GPS updates
+  // during the "armed, waiting for takeoff" phase too. It used to be
+  // started only from inside startRecording(), which meant auto-start
+  // could ONLY ever be detected by the foreground watcher: if a pilot
+  // armed the app and stowed the phone before reaching flying speed, there
+  // was no background fallback watching for it at all. Must still be
+  // called while the screen is in the foreground either way — Android
+  // restricts starting a new foreground service from the background — so
+  // starting it at mount (rather than at an arbitrary later moment) is
+  // also what makes this reliable, not just earlier.
+  // Idempotent via the hasStartedLocationUpdatesAsync check — safe to call
+  // again from startRecording() below for the manual-start path.
+  const startBackgroundLocationUpdates = async () => {
+    try {
+      const already = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      if (already) return;
+    } catch {
+      // Fall through and attempt to start it anyway.
+    }
+    Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+      accuracy: Location.Accuracy.BestForNavigation,
+      // Requesting the same 2Hz rate as foreground — Android's own power
+      // management still throttles actual background delivery well below
+      // whatever's requested here as a flight goes on regardless (a real,
+      // separate platform limitation, not something this setting alone
+      // fixes), but requesting the faster rate gives it the best chance
+      // of delivering closer to it, especially combined with exempting
+      // this app from battery optimization.
+      timeInterval: 500,
+      distanceInterval: 0,
+      showsBackgroundLocationIndicator: true,
+      foregroundService: {
+        // Deliberately worded to cover both the pre-flight armed phase and
+        // actual recording, since the same task now runs through both —
+        // "recording your flight" would be actively wrong to show while
+        // still on the ground waiting for takeoff.
+        notificationTitle: 'PushpakWx GPS tracking is active',
+        notificationBody: 'Recording starts automatically at flying speed — tap to return to the app.',
+      },
+    }).catch((e) => {
+      console.warn('[flight-recording] could not start background updates', e?.message);
+    });
+  };
+
+  const stopBackgroundLocationUpdates = async () => {
+    try {
+      const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      if (started) await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+    } catch {
+      // Not registered / already stopped — nothing to do.
+    }
+  };
 
   const startRecording = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -418,6 +491,10 @@ export default function InFlight() {
     setRecording(true);
     recordingRef.current = true;
     setAutoCountdown(null);
+    // Idempotent — a no-op if an auto-start (foreground or background)
+    // already committed this via processLocationUpdate before this UI
+    // handler ran, which is now possible; still the sole owner of the
+    // storage-side start for the manual "Start Flight" button path.
     beginRecording(startMs).catch(() => {});
     // One-time, not on every recording — directly relevant to the
     // background sample-rate gaps found in real flight data. Doesn't
@@ -438,40 +515,9 @@ export default function InFlight() {
     // already-verified in-app popup whenever the screen happens to be
     // open, it just won't also reach the lock screen.
     ensureNotificationPermission().catch(() => {});
-    // Must be started here, while still in the foreground — Android
-    // restricts starting a new foreground service from the background, so
-    // this can't be deferred until after the phone might already be stowed
-    // away. Runs alongside the existing foreground watch, not instead of
-    // it; the background task only continues delivering updates once this
-    // screen stops receiving them (backgrounded/locked).
-    Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-      accuracy: Location.Accuracy.BestForNavigation,
-      // Requesting the same 2Hz rate as foreground — Android's own power
-      // management still throttles actual background delivery well below
-      // whatever's requested here as a flight goes on regardless (a real,
-      // separate platform limitation, not something this setting alone
-      // fixes), but requesting the faster rate gives it the best chance
-      // of delivering closer to it, especially combined with exempting
-      // this app from battery optimization.
-      timeInterval: 500,
-      distanceInterval: 0,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: 'PushpakWx is recording your flight',
-        notificationBody: 'GPS tracking continues in the background — tap to return to the app.',
-      },
-    }).catch((e) => {
-      console.warn('[flight-recording] could not start background updates', e?.message);
-    });
-  };
-
-  const stopBackgroundLocationUpdates = async () => {
-    try {
-      const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-      if (started) await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-    } catch {
-      // Not registered / already stopped — nothing to do.
-    }
+    // Defensive — normally already running since the mount effect starts
+    // it as soon as this screen had permission, well before this point.
+    startBackgroundLocationUpdates();
   };
 
   // Shared tail end for both a manual stop (button press) and an auto-stop
@@ -533,6 +579,25 @@ export default function InFlight() {
     });
   }, []);
 
+  // Symmetric case to the one above: a flight that AUTO-STARTED entirely
+  // while this screen wasn't open (background task detected flying speed
+  // with the phone already stowed) leaves KEY_RECORDING_ACTIVE true in
+  // storage with nothing in local UI state reflecting it. Without this,
+  // reopening the app mid-flight would show "not recording" even though
+  // real samples are actively being appended underneath — hydrate local
+  // state to match reality instead.
+  useEffect(() => {
+    isRecordingActive().then((active) => {
+      if (!active || recordingRef.current) return;
+      Promise.all([getPersistedStartMs(), getPersistedSamples()]).then(([startMs, persisted]) => {
+        setRecordStartMs(startMs ?? Date.now());
+        setSamples(persisted.map(toLocalSample));
+        setRecording(true);
+        recordingRef.current = true;
+      });
+    });
+  }, []);
+
   const discardFlight = () => {
     setSaveModalVisible(false);
     setPendingSamples([]);
@@ -565,6 +630,7 @@ export default function InFlight() {
           alt_ft: s.altFt,
           speed_kt: s.speedKt,
           heading: s.heading ?? null,
+          acc_m: s.accM ?? null,
         })),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});

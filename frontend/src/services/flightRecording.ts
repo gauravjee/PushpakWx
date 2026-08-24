@@ -11,6 +11,7 @@
 import { storage } from '@/src/utils/storage';
 import { resetLastGoodAltitude } from '@/src/utils/mslAltitude';
 import { resetLastPosition } from '@/src/utils/derivedSpeed';
+import { isPositionReliable, resetPositionReliability } from '@/src/utils/positionReliability';
 
 export type FlightSample = {
   t: number;
@@ -19,6 +20,11 @@ export type FlightSample = {
   alt_ft?: number;
   speed_kt?: number;
   heading?: number;
+  // Horizontal GPS accuracy in meters, as reported by the location API.
+  // Kept on the sample (not just used transiently) so a saved flight can
+  // actually be diagnosed after the fact instead of guessing — this was a
+  // real gap when investigating a flight with a visibly wrong/torn track.
+  acc_m?: number;
 };
 
 type AutoDetectState = {
@@ -108,6 +114,21 @@ async function setAutoState(state: AutoDetectState): Promise<void> {
 
 export async function isRecordingActive(): Promise<boolean> {
   return (await storage.getItem<boolean>(KEY_RECORDING_ACTIVE, false)) ?? false;
+}
+
+// The background task has no React tree and so can't read the user's
+// auto_detect_flight preference via PrefsContext — this mirrors it into
+// AsyncStorage (written by PrefsContext whenever prefs load or change) so
+// the background task can check it directly before deciding whether it's
+// worth running at all while no recording is active yet.
+const KEY_AUTO_DETECT_PREF = 'flight_recording_auto_detect_pref';
+
+export async function getAutoDetectPref(): Promise<boolean> {
+  return (await storage.getItem<boolean>(KEY_AUTO_DETECT_PREF, true)) ?? true;
+}
+
+export async function setAutoDetectPref(enabled: boolean): Promise<void> {
+  await storage.setItem(KEY_AUTO_DETECT_PREF, enabled);
 }
 
 export async function getRecordStartMs(): Promise<number | null> {
@@ -224,7 +245,16 @@ async function removeAllChunks(): Promise<void> {
   await storage.removeItem(KEY_LAST_APPENDED_TIME);
 }
 
+// Idempotent: a second call while a recording is already active is a
+// deliberate no-op rather than re-wiping in-progress samples. This matters
+// now that processLocationUpdate's auto-start branch can call this itself
+// (see below) — the foreground screen's own startRecording() still calls
+// it too, for the manual "Start Flight" button path, and both call sites
+// need to be safe to run back-to-back without one clobbering the other's
+// work, however much real time has passed between them (the auto-start
+// call may have happened while this screen wasn't even open).
 export async function beginRecording(startMs: number): Promise<void> {
+  if (await isRecordingActive()) return;
   await storage.setItem(KEY_RECORDING_ACTIVE, true);
   await storage.setItem(KEY_RECORD_START_MS, startMs);
   await removeAllChunks();
@@ -232,6 +262,7 @@ export async function beginRecording(startMs: number): Promise<void> {
   await storage.setItem(KEY_PENDING_STOPPED, false);
   await resetLastGoodAltitude();
   await resetLastPosition();
+  await resetPositionReliability();
 }
 
 /**
@@ -287,11 +318,20 @@ export type ProcessResult = {
  * continuous countdown, never two independent ones), and reports back
  * whether this update just triggered a start or a stop.
  *
- * Does NOT itself flip KEY_RECORDING_ACTIVE for a 'started' result — the
- * caller (InFlight screen) owns starting, since only the foreground screen
- * can be the one to actually kick off recording. This function DOES flip it
- * for 'stopped', since auto-stop must be able to fully complete even if
- * nothing foreground ever sees it happen.
+ * Fully commits both 'started' and 'stopped' itself (flips
+ * KEY_RECORDING_ACTIVE, resets tracking state) rather than just reporting
+ * the decision back to the caller. This used to be asymmetric — 'stopped'
+ * fully committed itself ("auto-stop must be able to fully complete even
+ * if nothing foreground ever sees it happen"), but 'started' left the real
+ * work to the foreground screen's startRecording(), on the assumption that
+ * only the foreground screen could ever observe an auto-start crossing.
+ * That assumption doesn't hold once the background task can be running
+ * before a recording begins (see backgroundLocationTask.ts) — if a pilot
+ * arms the app and stows the phone before reaching flying speed, the
+ * foreground watcher may go quiet well before AUTO_START_KT is reached,
+ * leaving only the background task to observe it. beginRecording() is
+ * idempotent, so the foreground screen calling it again afterward (its
+ * own UI-state bookkeeping in startRecording()) is always safe.
  */
 export async function processLocationUpdate(
   speedKt: number,
@@ -317,9 +357,11 @@ export async function processLocationUpdate(
       if (state.fastSince == null) state.fastSince = now;
       const elapsed = now - state.fastSince;
       if (elapsed >= AUTO_START_MS) {
+        // beginRecording() resets auto-state itself (to the same cleared
+        // shape), so no separate setAutoState call is needed here.
+        await beginRecording(now);
         const cleared = { fastSince: null, slowSince: null, fastBlipSince: null, hasReachedFlightSpeed: false, warningNotified: false };
-        await setAutoState(cleared);
-        return { samples: [], action: 'started', autoState: cleared, recording: false, shouldWarn: false };
+        return { samples: [], action: 'started', autoState: cleared, recording: true, shouldWarn: false };
       }
       await setAutoState(state);
     } else if (state.fastSince != null) {
@@ -329,8 +371,14 @@ export async function processLocationUpdate(
     return { samples: [], action: null, autoState: state, recording: false, shouldWarn: false };
   }
 
-  // Currently recording: always append the sample first, then evaluate stop.
-  await appendSample(sample);
+  // Currently recording: append the sample first (skipping it if the
+  // position fix itself is too unreliable to trust — see
+  // positionReliability.ts), then evaluate stop. Auto-stop/auto-start
+  // timing below runs off speedKt regardless, whether or not this
+  // particular sample made it into the saved track.
+  if (await isPositionReliable(sample.acc_m, sample.t)) {
+    await appendSample(sample);
+  }
 
   // Once flight speed is reached, that's sticky for the rest of the
   // session — a later ground hold shouldn't fall back to the generous
@@ -419,6 +467,7 @@ export async function trySaveAnyPendingFlight(): Promise<{ saved: boolean; fligh
       samples: samples.map(s => ({
         t: s.t, lat: s.lat, lon: s.lon,
         alt_ft: s.alt_ft ?? null, speed_kt: s.speed_kt ?? null, heading: s.heading ?? null,
+        acc_m: s.acc_m ?? null,
       })),
     });
     await clearRecording();

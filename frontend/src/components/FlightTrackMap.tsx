@@ -15,6 +15,10 @@ export type TrackSample = {
   altFt: number;
   speedKt: number;
   heading?: number;
+  // Horizontal GPS accuracy in meters, carried through purely so it can
+  // reach the saved flight record for later diagnosis — not used for
+  // anything in the map rendering itself.
+  accM?: number;
 };
 
 type Props = {

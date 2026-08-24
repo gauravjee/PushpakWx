@@ -78,6 +78,7 @@ export type FlightSample = {
   alt_ft?: number | null;
   speed_kt?: number | null;
   heading?: number | null;
+  acc_m?: number | null;
 };
 
 export type FlightSummary = {

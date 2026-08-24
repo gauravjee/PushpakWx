@@ -214,6 +214,12 @@ class FlightSample(BaseModel):
     alt_ft: Optional[float] = None
     speed_kt: Optional[float] = None
     heading: Optional[float] = None
+    # Horizontal GPS accuracy in meters, as reported by the device. Newly
+    # persisted so a flight with a wrong/torn track can actually be
+    # diagnosed from its saved data instead of guessing — previously not
+    # captured anywhere, which is exactly what made the last investigation
+    # (real Cessna 172S flight, visibly incorrect path) hard to confirm.
+    acc_m: Optional[float] = None
 
 class FlightCreate(BaseModel):
     started_at: str  # ISO
@@ -1370,14 +1376,15 @@ async def export_flight(
         return {"filename": f"flight-{flight_id[:8]}-{label}.csv", "content_type": "text/csv", "content": "\n".join(lines)}
 
     if format == "csv":
-        lines = ["timestamp_iso,lat,lon,alt_ft,speed_kt,heading_deg"]
+        lines = ["timestamp_iso,lat,lon,alt_ft,speed_kt,heading_deg,acc_m"]
         for s in f["samples"]:
             iso = datetime.fromtimestamp(s["t"] / 1000, tz=timezone.utc).isoformat()
             lines.append(
                 f"{iso},{s['lat']},{s['lon']},"
                 f"{s.get('alt_ft', '') or ''},"
                 f"{s.get('speed_kt', '') or ''},"
-                f"{s.get('heading', '') or ''}"
+                f"{s.get('heading', '') or ''},"
+                f"{s.get('acc_m', '') or ''}"
             )
         return {"filename": f"flight-{flight_id[:8]}.csv", "content_type": "text/csv", "content": "\n".join(lines)}
     else:  # geojson
