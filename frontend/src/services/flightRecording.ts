@@ -54,6 +54,23 @@ const CHUNK_SIZE = 100;
 // moment — reject a new one if it lands within this window of the last
 // one actually appended, since it's almost certainly the other watcher's
 // copy of the same fix, not a genuinely new one.
+//
+// This window is the actual enforcement of that intent. Confirmed against
+// a real Cessna 172 flight CSV: the foreground watchPositionAsync and the
+// background startLocationUpdatesAsync task both run concurrently for as
+// long as the app process is alive (not only once truly backgrounded, as
+// previously assumed) and both requested the same 500ms/2Hz interval —
+// Android's fused location provider delivered real, distinct fixes to
+// both, landing 50-150ms apart in storage. A plain "not strictly newer
+// than the last appended timestamp" check (what used to be here) doesn't
+// catch this: two different fixes 50-150ms apart both have strictly
+// increasing timestamps, so both passed, doubling sample density with
+// near-duplicate points and corrupting the haversine-derived speed calc
+// (which assumes consecutive samples are actually consecutive in time).
+// 350ms sits comfortably under the requested 500ms interval, so genuine
+// back-to-back samples from a single watcher are never rejected, while
+// the observed 50-150ms cross-watcher duplicates are.
+const MIN_SAMPLE_GAP_MS = 350;
 const KEY_LAST_APPENDED_TIME = 'flight_recording_last_appended_time';
 const KEY_AUTO_STATE = 'flight_recording_autostate';
 // Set when auto-stop fires while the app wasn't in the foreground to see it —
@@ -170,7 +187,7 @@ async function appendSampleLocked(sample: FlightSample): Promise<void> {
   // time. Anything not newer than the last one actually appended — by
   // any amount, not just within a short window — is rejected outright.
   const lastTime = (await storage.getItem<number>(KEY_LAST_APPENDED_TIME, -1)) ?? -1;
-  if (sample.t <= lastTime) {
+  if (sample.t - lastTime < MIN_SAMPLE_GAP_MS) {
     return;
   }
 

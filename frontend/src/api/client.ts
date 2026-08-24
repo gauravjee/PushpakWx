@@ -23,7 +23,11 @@ export type Airport = {
   elevation_ft?: number | null;
 };
 
-export type Favorite = Airport & { id: string; created_at: string };
+// Favorite payloads can have a null icao (backend's FavoriteCreate model
+// allows it — some smaller strips/private fields genuinely don't have
+// one), unlike Airport.icao which is always populated for real airport
+// records. Override rather than loosen Airport's own contract.
+export type Favorite = Omit<Airport, 'icao'> & { icao: string | null; id: string; created_at: string };
 
 export type Prefs = {
   wind_unit: 'kt' | 'kmh' | 'mph';
